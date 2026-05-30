@@ -17,12 +17,19 @@ NOTIFY_CATEGORIES: Set[EventCategory] = {
 _cooldowns: Dict[Tuple[str, str], float] = {}
 
 
+def _category_value(category):
+    """Extract string value from EventCategory enum or plain string."""
+    if isinstance(category, EventCategory):
+        return category.value
+    return str(category)
+
+
 def _check_cooldown(project_name: str, category: EventCategory) -> bool:
     """Return True if enough time has passed since last notification for this key.
 
     Per D-06: 30 second cooldown per (project_name, category) composite key.
     """
-    key = (project_name, category.value)
+    key = (project_name, _category_value(category))
     now = time.monotonic()
     last = _cooldowns.get(key, 0.0)
     if now - last >= NOTIFY_COOLDOWN_S:

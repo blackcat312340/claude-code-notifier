@@ -63,14 +63,23 @@ class NotifierServer:
             data = await asyncio.wait_for(reader.readline(), timeout=10.0)
             if data:
                 payload = json.loads(data.decode().strip())
-                # Reconstruct event from dict
+                # Reconstruct event from dict — convert category string back to EventCategory enum
+                from notifier.core.events import EventCategory, SessionInfo
+                cat_value = payload.get("category", "")
+                try:
+                    category = EventCategory(cat_value)
+                except ValueError:
+                    category = EventCategory.ERROR
+
+                session_data = payload.get("session", {})
+                session = SessionInfo(
+                    session_id=session_data.get("session_id", ""),
+                    cwd=session_data.get("cwd", ""),
+                    project_name=session_data.get("project_name", ""),
+                )
                 event = NotifierEvent(
-                    category=payload.get("category", ""),
-                    session=type("Session", (), {
-                        "session_id": payload.get("session", {}).get("session_id", ""),
-                        "cwd": payload.get("session", {}).get("cwd", ""),
-                        "project_name": payload.get("session", {}).get("project_name", ""),
-                    })(),
+                    category=category,
+                    session=session,
                     hook_event_name=payload.get("hook_event_name", ""),
                     timestamp=payload.get("timestamp", ""),
                     raw_payload=payload.get("raw_payload", {}),
