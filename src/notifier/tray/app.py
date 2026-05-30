@@ -2,6 +2,7 @@ import logging
 import queue
 import threading
 import asyncio
+from collections import deque
 from PIL import Image, ImageDraw
 from notifier.server.tcp_server import NotifierServer, HOST, PORT
 
@@ -46,6 +47,7 @@ class NotifierTray:
         self._icon = None
         self._notify_queue = queue.Queue()
         self._notify_worker = None
+        self.event_history = deque(maxlen=50)
 
     def _patch_server_handler(self):
         """Hook _update_session to enqueue notifications and refresh tooltip."""
@@ -55,6 +57,7 @@ class NotifierTray:
         def patched_update(event):
             original_update(event)
             notify_queue.put(event)
+            self.event_history.appendleft(event)
             # Refresh tray tooltip with new session count
             if self._icon:
                 count = len(self.server.session_registry)
