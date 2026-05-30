@@ -1,4 +1,4 @@
-from notifier.server.tcp_server import main
+from notifier.tray.app import main
 
 if __name__ == "__main__":
     main()
