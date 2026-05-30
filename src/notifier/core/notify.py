@@ -3,7 +3,7 @@ import time
 from typing import Dict, Set, Tuple
 from notifier.core.events import EventCategory, NotifierEvent
 
-NOTIFY_COOLDOWN_S = 30
+NOTIFY_COOLDOWN_S = 5
 
 # D-05: Only PERMISSION, IDLE, DONE fire notifications. ERROR is logged only.
 NOTIFY_CATEGORIES: Set[EventCategory] = {

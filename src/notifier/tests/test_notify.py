@@ -106,7 +106,7 @@ class TestCheckCooldown:
 
     def test_cooldown_uses_period(self):
         """Verify NOTIFY_COOLDOWN_S is the period used."""
-        assert NOTIFY_COOLDOWN_S == 30
+        assert NOTIFY_COOLDOWN_S == 5
 
 
 class TestDispatchNotification:

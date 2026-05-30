@@ -6,11 +6,27 @@ from PIL import Image, ImageDraw
 from notifier.server.tcp_server import NotifierServer, HOST, PORT
 
 
-# Simple 64x64 tray icon — blue square with white "N" (D-03: minimal placeholder)
+# Notification bell icon — yellow bell with red notification dot
 def _make_icon_image():
-    img = Image.new("RGB", (64, 64), color=(59, 130, 246))
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.text((18, 8), "N", fill=(255, 255, 255))
+
+    # Bell body (rounded rectangle)
+    draw.rounded_rectangle([12, 6, 52, 42], radius=14, fill=(255, 215, 0))
+
+    # Bell opening (arc at bottom + dark fill)
+    draw.ellipse([18, 30, 46, 52], fill=(220, 185, 0))
+
+    # Bell highlight (lighter arc near top)
+    draw.ellipse([20, 10, 44, 24], fill=(255, 235, 80))
+
+    # Clapper (small ball at bottom)
+    draw.ellipse([27, 46, 37, 56], fill=(255, 215, 0))
+    draw.ellipse([28, 47, 36, 55], fill=(255, 235, 100))
+
+    # Red notification dot (top-right)
+    draw.ellipse([42, 2, 56, 16], fill=(255, 50, 50))
+
     return img
 
 

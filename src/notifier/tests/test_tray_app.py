@@ -17,9 +17,9 @@ class TestMakeIconImage:
         img = _make_icon_image()
         assert img.size == (64, 64)
 
-    def test_returns_rgb_mode(self):
+    def test_returns_rgba_mode(self):
         img = _make_icon_image()
-        assert img.mode == "RGB"
+        assert img.mode == "RGBA"
 
 
 class TestNotifierTray:
