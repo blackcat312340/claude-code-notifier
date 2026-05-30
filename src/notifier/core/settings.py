@@ -1,0 +1,137 @@
+import json
+import logging
+from pathlib import Path
+from typing import Dict, Any, Optional
+from mergedeep import merge, Strategy
+
+# Claude Code settings file path
+SETTINGS_FILE = Path.home() / ".claude" / "settings.json"
+
+# Notifier ownership tracking file (per D-09: separate from Claude settings)
+NOTIFIER_OWNERSHIP_FILE = Path.home() / ".claude" / ".notifier-ownership.json"
+
+# The 4 hook entries to install (per D-02/D-08, reconciled with research findings)
+# No standalone "Idle" hook event exists -- idle detection is Notification + idle_prompt
+HOOK_ENTRIES: Dict[str, Any] = {
+    "SessionStart": [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "notifier-hook SessionStart",
+                    "timeout": 10,
+                }
+            ]
+        }
+    ],
+    "Notification": [
+        {
+            "matcher": "permission_prompt",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "notifier-hook Notification",
+                    "timeout": 10,
+                }
+            ],
+        },
+        {
+            "matcher": "idle_prompt",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "notifier-hook Notification",
+                    "timeout": 10,
+                }
+            ],
+        },
+    ],
+    "Stop": [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "notifier-hook Stop",
+                    "timeout": 10,
+                }
+            ]
+        }
+    ],
+}
+
+OWNERSHIP_MARKER = {
+    "tool": "claude-code-notifier",
+    "version": "0.1.0",
+    "installed_at": None,  # filled at install time
+    "hook_event_types": ["SessionStart", "Notification", "Stop"],
+    "matchers": {"Notification": ["permission_prompt", "idle_prompt"]},
+}
+
+
+def _read_json(path: Path) -> Dict[str, Any]:
+    """Read JSON file, returning empty dict if file doesn't exist or is invalid."""
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logging.warning("Could not read %s: %s. Starting fresh.", path, exc)
+        return {}
+
+
+def _write_json(path: Path, data: Dict[str, Any]) -> None:
+    """Write JSON data to file atomically (write to temp, rename)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(".tmp")
+    temp_path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    temp_path.replace(path)
+
+
+def install_hooks(
+    settings_path: Optional[Path] = None,
+    ownership_path: Optional[Path] = None,
+) -> bool:
+    """Deep-merge notifier hook entries into Claude Code settings.json.
+
+    Per D-07: Merges only the 'hooks' key. All other user settings
+    (themes, custom commands, project overrides, other hook tools)
+    are preserved untouched.
+
+    Per D-09: Tracks ownership in a separate notifier config file,
+    NOT by adding metadata keys to Claude Code hook entries.
+
+    Args:
+        settings_path: Path to settings.json (default: ~/.claude/settings.json).
+        ownership_path: Path to ownership file (default: ~/.claude/.notifier-ownership.json).
+
+    Returns:
+        True if hooks were installed successfully.
+    """
+    s_path = settings_path or SETTINGS_FILE
+    o_path = ownership_path or NOTIFIER_OWNERSHIP_FILE
+
+    # Step 1: Read existing settings
+    existing = _read_json(s_path)
+
+    # Step 2: Deep-merge only the hooks key (per D-07, mergedeep ADDITIVE)
+    # ADDITIVE strategy: merges lists by appending, merges dicts recursively
+    merge(existing, {"hooks": HOOK_ENTRIES}, strategy=Strategy.ADDITIVE)
+
+    # Step 3: Write back the full settings file
+    _write_json(s_path, existing)
+
+    # Step 4: Write ownership tracking file (per D-09)
+    import datetime
+    ownership = dict(OWNERSHIP_MARKER)
+    ownership["installed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    _write_json(o_path, ownership)
+
+    logging.info(
+        "Notifier hooks installed into %s (ownership tracked in %s)",
+        s_path,
+        o_path,
+    )
+    return True
