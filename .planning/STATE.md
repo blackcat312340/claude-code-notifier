@@ -17,7 +17,7 @@ progress:
 **Project:** Claude Code Notifier
 **Status:** Phase 2 complete — ready for Phase 3
 **Current focus:** Phase 3 - Operator Trust Surface
-**Current workflow step:** Phase 3 context gathered → next: `gsd-plan-phase 3`
+**Current workflow step:** Phase 3 planned → next: `gsd-execute-phase 3`
 **Current workflow step:** Phase 2 verified → next: `gsd-discuss-phase 3`
 **Project mode:** MVP
 
