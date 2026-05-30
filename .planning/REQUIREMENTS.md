@@ -71,10 +71,10 @@
 | SESS-01 | Phase 1 | Verified |
 | SESS-02 | Phase 1 | Verified |
 | SESS-03 | Phase 3 | Pending |
-| ATTN-01 | Phase 2 | Pending |
-| ATTN-02 | Phase 2 | Pending |
-| ATTN-03 | Phase 2 | Pending |
-| TRAY-01 | Phase 2 | Pending |
+| ATTN-01 | Phase 2 | Verified |
+| ATTN-02 | Phase 2 | Verified |
+| ATTN-03 | Phase 2 | Verified |
+| TRAY-01 | Phase 2 | Verified |
 | TRAY-02 | Phase 3 | Pending |
 | TRAY-03 | Phase 5 | Pending |
 | TRAY-04 | Phase 3 | Pending |

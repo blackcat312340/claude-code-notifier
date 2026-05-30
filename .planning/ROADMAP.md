@@ -39,7 +39,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md -- Tray Application + Notification Dispatcher (ATTN-01, ATTN-02, ATTN-03, TRAY-01)
+- [x] 02-01-PLAN.md -- Tray Application + Notification Dispatcher (ATTN-01, ATTN-02, ATTN-03, TRAY-01)
 
 **Success Criteria**:
 
