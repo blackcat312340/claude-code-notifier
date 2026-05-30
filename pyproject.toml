@@ -1,0 +1,18 @@
+[project]
+name = "claude-code-notifier"
+version = "0.1.0"
+description = "Desktop notifications for Claude Code events"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.25.0",
+    "mergedeep>=1.3.4",
+]
+
+[project.scripts]
+notifier-hook = "notifier.cli.hook:app"
+
+[tool.pytest.ini_options]
+testpaths = ["src/notifier/tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
