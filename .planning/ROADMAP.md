@@ -22,7 +22,7 @@
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md -- Walking Skeleton + Event Pipeline (HOOK-03, SESS-01, SESS-02)
+- [x] 01-01-PLAN.md -- Walking Skeleton + Event Pipeline (HOOK-03, SESS-01, SESS-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
