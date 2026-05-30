@@ -1,4 +1,7 @@
 import logging
+import subprocess
+import sys
+import json
 import time
 from typing import Dict, Set, Tuple
 from notifier.core.events import EventCategory, NotifierEvent
@@ -14,18 +17,6 @@ NOTIFY_CATEGORIES: Set[EventCategory] = {
 
 # In-memory cooldown tracker: {(project_name, category): last_notification_timestamp}
 _cooldowns: Dict[Tuple[str, str], float] = {}
-
-# Lazy-initialized win10toast notifier
-_toaster = None
-
-
-def _get_toaster():
-    """Get or create the win10toast ToastNotifier singleton."""
-    global _toaster
-    if _toaster is None:
-        from win10toast import ToastNotifier
-        _toaster = ToastNotifier()
-    return _toaster
 
 
 def _category_value(category):
@@ -100,12 +91,18 @@ def dispatch_notification(event: NotifierEvent) -> bool:
 
     try:
         # D-04: Title = project name, Body = reminder type + context
-        toaster = _get_toaster()
-        toaster.show_toast(
-            title=project,
-            msg=_build_body(event),
-            duration=5,
-            threaded=True,  # Don't block — return immediately
+        # Spawn a subprocess to show the toast — avoids daemon-thread
+        # WNDPROC conflicts that prevent notifications from appearing.
+        body = _build_body(event)
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "from win10toast import ToastNotifier; "
+                f"ToastNotifier().show_toast({json.dumps(project)}, {json.dumps(body)}, duration=5, threaded=True)",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         logging.info(
             "Notification sent: %s | project=%s | category=%s",
