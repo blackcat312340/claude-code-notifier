@@ -18,7 +18,7 @@ HOOK_ENTRIES: Dict[str, Any] = {
             "hooks": [
                 {
                     "type": "command",
-                    "command": "notifier-hook SessionStart",
+                    "command": "python -m notifier.cli.hook SessionStart",
                     "timeout": 10,
                 }
             ]
@@ -30,7 +30,7 @@ HOOK_ENTRIES: Dict[str, Any] = {
             "hooks": [
                 {
                     "type": "command",
-                    "command": "notifier-hook Notification",
+                    "command": "python -m notifier.cli.hook Notification",
                     "timeout": 10,
                 }
             ],
@@ -40,7 +40,7 @@ HOOK_ENTRIES: Dict[str, Any] = {
             "hooks": [
                 {
                     "type": "command",
-                    "command": "notifier-hook Notification",
+                    "command": "python -m notifier.cli.hook Notification",
                     "timeout": 10,
                 }
             ],
@@ -51,7 +51,7 @@ HOOK_ENTRIES: Dict[str, Any] = {
             "hooks": [
                 {
                     "type": "command",
-                    "command": "notifier-hook Stop",
+                    "command": "python -m notifier.cli.hook Stop",
                     "timeout": 10,
                 }
             ]
@@ -91,11 +91,11 @@ def _write_json(path: Path, data: Dict[str, Any]) -> None:
 
 
 def _is_notifier_entry(entry: Dict[str, Any]) -> bool:
-    """Check if a hook entry is owned by the notifier (contains notifier-hook command)."""
+    """Check if a hook entry is owned by the notifier (contains notifier hook module reference)."""
     hooks = entry.get("hooks", [])
     for hook in hooks:
         cmd = hook.get("command", "")
-        if "notifier-hook" in cmd:
+        if "notifier.cli.hook" in cmd or "notifier-hook" in cmd:
             return True
     return False
 
