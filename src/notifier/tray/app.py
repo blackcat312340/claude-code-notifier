@@ -1,8 +1,8 @@
 import logging
+import queue
 import threading
 import asyncio
 from PIL import Image, ImageDraw
-from notifier.core.notify import dispatch_notification
 from notifier.server.tcp_server import NotifierServer, HOST, PORT
 
 
@@ -20,27 +20,32 @@ class NotifierTray:
     Per D-09: TCP server runs in daemon thread, pystray owns main thread.
     Per D-10: No console window — use pythonw.exe or .pyw launcher.
     Per D-12: Right-click menu has single "Exit" item.
-    Per D-13: Tooltip shows "Claude Code Notifier — Monitoring (N sessions)".
+    Per D-13: Tooltip shows live session count, updated on each event.
     """
 
     def __init__(self):
         self.server = NotifierServer()
         self._server_thread = None
         self._loop = None
+        self._icon = None
+        self._notify_queue = queue.Queue()
+        self._notify_worker = None
 
     def _patch_server_handler(self):
-        """Monkey-patch _update_session to inject notification dispatch.
-
-        After the existing session registry update, we dispatch a notification
-        for attention-worthy events. This keeps the TCP server code unchanged
-        while adding notification behavior.
-        """
+        """Hook _update_session to enqueue notifications and refresh tooltip."""
         original_update = self.server._update_session
+        notify_queue = self._notify_queue
 
         def patched_update(event):
             original_update(event)
-            # Dispatch notification after session update
-            dispatch_notification(event)
+            notify_queue.put(event)
+            # Refresh tray tooltip with new session count
+            if self._icon:
+                count = len(self.server.session_registry)
+                s = "sessions" if count != 1 else "session"
+                self._icon.title = (
+                    f"Claude Code Notifier - Monitoring ({count} {s})"
+                )
 
         self.server._update_session = patched_update
 
@@ -54,8 +59,25 @@ class NotifierTray:
         except Exception as exc:
             logging.error("TCP server error: %s", exc)
 
+    def _run_notify_worker(self):
+        """Process notification queue in a dedicated thread.
+
+        Each event triggers a win10toast call. Running in its own thread
+        avoids the daemon-thread WNDPROC issue and subprocess overhead.
+        """
+        from notifier.core.notify import dispatch_notification
+
+        while True:
+            event = self._notify_queue.get()
+            if event is None:  # Shutdown signal
+                break
+            try:
+                dispatch_notification(event)
+            except Exception as exc:
+                logging.warning("Notify worker error: %s", exc)
+
     def _tooltip_text(self):
-        """Build tooltip text with live session count (D-13)."""
+        """Build initial tooltip text (D-13)."""
         count = len(self.server.session_registry)
         session_word = "session" if count == 1 else "sessions"
         return f"Claude Code Notifier - Monitoring ({count} {session_word})"
@@ -71,20 +93,24 @@ class NotifierTray:
         )
 
     def shutdown(self, icon):
-        """Stop the TCP server and quit the tray."""
+        """Stop the TCP server, notification worker, and quit the tray."""
+        self._notify_queue.put(None)  # Signal worker to stop
         icon.stop()
         if self._loop:
             self._loop.call_soon_threadsafe(self._loop.stop)
         logging.info("Notifier tray shutting down")
 
     def run(self):
-        """Start the tray application (D-08: main entry via python -m notifier).
-
-        Per D-09: TCP server starts in daemon thread before pystray.run()
-        blocks the main thread. This ensures events are being received while
-        the tray icon is visible.
-        """
+        """Start the tray application (D-08: main entry via python -m notifier)."""
         import pystray
+
+        # Start notification worker thread
+        self._notify_worker = threading.Thread(
+            target=self._run_notify_worker,
+            daemon=True,
+            name="notifier-notify-worker",
+        )
+        self._notify_worker.start()
 
         self._patch_server_handler()
 
@@ -97,17 +123,18 @@ class NotifierTray:
         self._server_thread.start()
 
         # Run pystray on main thread
-        icon = pystray.Icon(
+        self._icon = pystray.Icon(
             name="Claude Code Notifier",
             icon=_make_icon_image(),
             title=self._tooltip_text(),
             menu=self._create_menu(),
         )
-        icon.run()
+        self._icon.run()
 
         # Cleanup after icon.run() returns (user clicked Exit)
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._loop.stop)
+        self._notify_queue.put(None)
 
 
 def main():

@@ -64,17 +64,40 @@ class TestNotifierTray:
         menu = tray._create_menu()
         assert menu is not None
 
-    def test_patched_handler_dispatches_notifications(self):
-        """Verify the patched _update_session calls dispatch_notification."""
+    def test_patched_handler_enqueues_events(self):
+        """Verify the patched _update_session puts events on the notify queue."""
         tray = NotifierTray()
         tray._patch_server_handler()
 
-        with patch("notifier.tray.app.dispatch_notification") as mock_dispatch:
-            from notifier.core.events import EventCategory, NotifierEvent, SessionInfo
-            event = NotifierEvent(
-                category=EventCategory.PERMISSION,
-                session=SessionInfo("s1", "/t/test", "test"),
-                hook_event_name="Notification",
-            )
-            tray.server._update_session(event)
-            mock_dispatch.assert_called_once_with(event)
+        from notifier.core.events import EventCategory, NotifierEvent, SessionInfo
+        event = NotifierEvent(
+            category=EventCategory.PERMISSION,
+            session=SessionInfo("s1", "/t/test", "test"),
+            hook_event_name="Notification",
+        )
+        tray.server._update_session(event)
+        # Event should be on the queue
+        assert tray._notify_queue.qsize() == 1
+        queued = tray._notify_queue.get_nowait()
+        assert queued is event
+
+    def test_patched_handler_updates_tooltip(self):
+        """Verify the patched handler updates tray tooltip title."""
+        tray = NotifierTray()
+        tray._patch_server_handler()
+        # Simulate having an icon
+        from unittest.mock import MagicMock
+        tray._icon = MagicMock()
+
+        from notifier.core.events import EventCategory, NotifierEvent, SessionInfo
+        from notifier.server.tcp_server import SessionRecord
+        event = NotifierEvent(
+            category=EventCategory.PERMISSION,
+            session=SessionInfo("s1", "/t/test", "test"),
+            hook_event_name="Notification",
+        )
+        tray.server._update_session(event)
+        # Tooltip should be updated with session count
+        assert tray._icon.title is not None
+        assert "1" in tray._icon.title
+        assert "Monitoring" in tray._icon.title
