@@ -1,6 +1,4 @@
-def main():
-    print("Notifier server not yet implemented. Run this after Plan 01 completes all tasks.")
-
+from notifier.server.tcp_server import main
 
 if __name__ == "__main__":
     main()

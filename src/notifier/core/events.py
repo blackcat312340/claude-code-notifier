@@ -1,0 +1,84 @@
+from dataclasses import dataclass, field, asdict
+from enum import Enum
+from typing import Optional, Dict, Any
+from datetime import datetime, timezone
+
+
+class EventCategory(str, Enum):
+    PERMISSION = "permission"
+    IDLE = "idle"
+    DONE = "done"
+    ERROR = "error"
+
+
+@dataclass
+class SessionInfo:
+    session_id: str
+    cwd: str
+    project_name: str  # leaf directory from cwd, per D-04
+
+
+@dataclass
+class NotifierEvent:
+    category: EventCategory
+    session: SessionInfo
+    hook_event_name: str
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    raw_payload: Dict[str, Any] = field(default_factory=dict)
+    message: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+def classify_hook_event(raw: Dict[str, Any], event_type: str) -> NotifierEvent:
+    """Classify a raw hook payload into a NotifierEvent.
+
+    Per D-01: produces 4 categories (permission, idle, done, error).
+    Per D-03: Notification events classified by notification_type field.
+    Per critical research finding: No standalone Idle hook event --
+      idle maps from Notification + idle_prompt.
+    """
+    from notifier.core.session import extract_session
+
+    session = extract_session(raw)
+    category, message = _classify(event_type, raw)
+
+    return NotifierEvent(
+        category=category,
+        session=session,
+        hook_event_name=event_type,
+        raw_payload=raw,
+        message=message,
+    )
+
+
+def _classify(event_type: str, raw: Dict[str, Any]):
+    """Determine event category and message from hook event type and payload.
+
+    Classification rules:
+    - Notification + permission_prompt -> PERMISSION (D-03)
+    - Notification + idle_prompt -> IDLE (research: no standalone Idle event)
+    - Stop -> DONE
+    - SessionStart -> IDLE (session started, no notification action)
+    - Unknown event_type -> ERROR
+    - Notification with unhandled matcher -> ERROR (e.g., auth_success, elicitation)
+    """
+    if event_type == "Notification":
+        ntype = raw.get("notification_type", "")
+        if ntype == "permission_prompt":
+            return EventCategory.PERMISSION, raw.get("message")
+        elif ntype == "idle_prompt":
+            return EventCategory.IDLE, raw.get("message")
+        else:
+            return EventCategory.ERROR, f"Unhandled notification type: {ntype}"
+
+    if event_type == "Stop":
+        return EventCategory.DONE, (raw.get("last_assistant_message") or "")[:200]
+
+    if event_type == "SessionStart":
+        return EventCategory.IDLE, "Session started"
+
+    return EventCategory.ERROR, f"Unknown event type: {event_type}"
