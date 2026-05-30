@@ -90,6 +90,16 @@ def _write_json(path: Path, data: Dict[str, Any]) -> None:
     temp_path.replace(path)
 
 
+def _is_notifier_entry(entry: Dict[str, Any]) -> bool:
+    """Check if a hook entry is owned by the notifier (contains notifier-hook command)."""
+    hooks = entry.get("hooks", [])
+    for hook in hooks:
+        cmd = hook.get("command", "")
+        if "notifier-hook" in cmd:
+            return True
+    return False
+
+
 def install_hooks(
     settings_path: Optional[Path] = None,
     ownership_path: Optional[Path] = None,
@@ -116,7 +126,24 @@ def install_hooks(
     # Step 1: Read existing settings
     existing = _read_json(s_path)
 
-    # Step 2: Deep-merge only the hooks key (per D-07, mergedeep ADDITIVE)
+    # Step 2: Strip existing notifier hook entries to ensure idempotency.
+    # mergedeep's ADDITIVE strategy appends lists, so a second install would
+    # duplicate entries. We first remove any hooks referencing "notifier-hook",
+    # then merge fresh entries.
+    if "hooks" in existing:
+        for event_type in list(existing["hooks"].keys()):
+            entries = existing["hooks"][event_type]
+            if isinstance(entries, list):
+                existing["hooks"][event_type] = [
+                    e
+                    for e in entries
+                    if not _is_notifier_entry(e)
+                ]
+            # Clean up empty event type keys
+            if not existing["hooks"][event_type]:
+                del existing["hooks"][event_type]
+
+    # Step 3: Deep-merge only the hooks key (per D-07, mergedeep ADDITIVE)
     # ADDITIVE strategy: merges lists by appending, merges dicts recursively
     merge(existing, {"hooks": HOOK_ENTRIES}, strategy=Strategy.ADDITIVE)
 
