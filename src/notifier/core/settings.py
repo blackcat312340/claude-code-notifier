@@ -10,54 +10,66 @@ SETTINGS_FILE = Path.home() / ".claude" / "settings.json"
 # Notifier ownership tracking file (per D-09: separate from Claude settings)
 NOTIFIER_OWNERSHIP_FILE = Path.home() / ".claude" / ".notifier-ownership.json"
 
+def _build_hook_entries():
+    """Build hook entries using the current Python executable absolute path.
+
+    Using sys.executable ensures Claude Code can invoke the hook regardless
+    of which project directory or virtual environment it runs in.
+    The path is quoted to handle spaces (e.g., Program Files).
+    """
+    import sys
+    python = sys.executable
+    return {
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook SessionStart',
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+        "Notification": [
+            {
+                "matcher": "permission_prompt",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook Notification',
+                        "timeout": 10,
+                    }
+                ],
+            },
+            {
+                "matcher": "idle_prompt",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook Notification',
+                        "timeout": 10,
+                    }
+                ],
+            },
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook Stop',
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+    }
+
+
 # The 4 hook entries to install (per D-02/D-08, reconciled with research findings)
-# No standalone "Idle" hook event exists -- idle detection is Notification + idle_prompt
-HOOK_ENTRIES: Dict[str, Any] = {
-    "SessionStart": [
-        {
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "python -m notifier.cli.hook SessionStart",
-                    "timeout": 10,
-                }
-            ]
-        }
-    ],
-    "Notification": [
-        {
-            "matcher": "permission_prompt",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "python -m notifier.cli.hook Notification",
-                    "timeout": 10,
-                }
-            ],
-        },
-        {
-            "matcher": "idle_prompt",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "python -m notifier.cli.hook Notification",
-                    "timeout": 10,
-                }
-            ],
-        },
-    ],
-    "Stop": [
-        {
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "python -m notifier.cli.hook Stop",
-                    "timeout": 10,
-                }
-            ]
-        }
-    ],
-}
+# Built at import time with the current Python executable absolute path.
+HOOK_ENTRIES: Dict[str, Any] = _build_hook_entries()
 
 OWNERSHIP_MARKER = {
     "tool": "claude-code-notifier",
