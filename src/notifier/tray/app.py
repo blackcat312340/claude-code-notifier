@@ -101,15 +101,10 @@ class NotifierTray:
         session_word = "session" if count == 1 else "sessions"
         return f"Claude Code Notifier - Monitoring ({count} {session_word})"
 
-    def _create_menu(self):
-        """Create the tray menu (D-12: Exit only)."""
-        import pystray
-        return pystray.Menu(
-            pystray.MenuItem(
-                "Exit",
-                lambda icon, item: self.shutdown(icon),
-            )
-        )
+    def _build_menu(self):
+        """Build dynamic tray menu (D-03, D-04)."""
+        from notifier.tray.menu import build_menu
+        return build_menu(self)
 
     def shutdown(self, icon):
         """Stop the TCP server, notification worker, and quit the tray."""
@@ -141,12 +136,12 @@ class NotifierTray:
         )
         self._server_thread.start()
 
-        # Run pystray on main thread
+        # Run pystray on main thread (menu built dynamically per D-04)
         self._icon = pystray.Icon(
             name="Claude Code Notifier",
             icon=_make_icon_image(),
             title=self._tooltip_text(),
-            menu=self._create_menu(),
+            menu=pystray.Menu(self._build_menu),
         )
         self._icon.run()
 
