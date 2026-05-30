@@ -26,7 +26,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md -- Hook Config Installation (HOOK-01)
+- [x] 01-02-PLAN.md -- Hook Config Installation (HOOK-01)
 
 ### Phase 2: First Useful Reminders
 
