@@ -6,13 +6,13 @@
 - Total phases: 5
 - v1 requirements mapped: 16 of 16
 
-### Phase 1: Hook Event Backbone
+- [x] **Phase 1: Hook Event Backbone** — Complete 2026-05-30
 
 **Goal:** Establish a supported Claude Code hook ingestion path that can identify sessions and projects across the local machine.
 **Mode:** mvp
 **Requirements:** HOOK-01, HOOK-03, SESS-01, SESS-02
 **UI hint:** no
-**Plans:** 2 plans
+- **Status:** Complete — verified 48/48 tests, all 4 requirements met
 **Success Criteria**:
 
 1. A notifier-managed hook configuration can be generated and installed into user-level Claude settings without deleting unrelated config
@@ -106,4 +106,4 @@ Plans:
 - This phase should leave the tool easy to adopt and easy to back out
 
 ---
-*Last updated: 2026-05-30 after phase 1 plan creation*
+*Last updated: 2026-05-30 after Phase 1 completion*

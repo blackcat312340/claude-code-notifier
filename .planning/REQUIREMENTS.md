@@ -65,11 +65,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOOK-01 | Phase 1 | Pending |
+| HOOK-01 | Phase 1 | Verified |
 | HOOK-02 | Phase 5 | Pending |
-| HOOK-03 | Phase 1 | Pending |
-| SESS-01 | Phase 1 | Pending |
-| SESS-02 | Phase 1 | Pending |
+| HOOK-03 | Phase 1 | Verified |
+| SESS-01 | Phase 1 | Verified |
+| SESS-02 | Phase 1 | Verified |
 | SESS-03 | Phase 3 | Pending |
 | ATTN-01 | Phase 2 | Pending |
 | ATTN-02 | Phase 2 | Pending |
