@@ -58,7 +58,7 @@ class NotifierTray:
         """Build tooltip text with live session count (D-13)."""
         count = len(self.server.session_registry)
         session_word = "session" if count == 1 else "sessions"
-        return f"Claude Code Notifier — Monitoring ({count} {session_word})"
+        return f"Claude Code Notifier - Monitoring ({count} {session_word})"
 
     def _create_menu(self):
         """Create the tray menu (D-12: Exit only)."""
