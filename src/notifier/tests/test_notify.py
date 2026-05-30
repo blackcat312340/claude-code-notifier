@@ -110,19 +110,19 @@ class TestCheckCooldown:
 
 
 class TestDispatchNotification:
-    """Integration: dispatch_notification with win10toast mock."""
+    """Integration: dispatch_notification with winotify mock."""
 
     def test_error_event_returns_false(self):
         event = _make_event(EventCategory.ERROR)
         result = dispatch_notification(event)
         assert result is False
 
-    @patch("notifier.core.notify._get_toaster")
-    def test_permission_event_sends_notification(self, mock_get_toaster):
+    @patch("notifier.core.notify.Notification")
+    def test_permission_event_sends_notification(self, mock_notify_cls):
         from notifier.core.notify import _cooldowns
         _cooldowns.clear()
-        mock_toaster = MagicMock()
-        mock_get_toaster.return_value = mock_toaster
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
 
         event = _make_event(
             EventCategory.PERMISSION,
@@ -132,33 +132,35 @@ class TestDispatchNotification:
         result = dispatch_notification(event)
 
         assert result is True
-        mock_toaster.show_toast.assert_called_once()
-        kwargs = mock_toaster.show_toast.call_args.kwargs
+        mock_notify_cls.assert_called_once()
+        kwargs = mock_notify_cls.call_args.kwargs
         assert kwargs["title"] == "my-project"
         assert "Permission needed" in kwargs["msg"]
+        assert kwargs["app_id"] == "Claude Code Notifier"
+        mock_notify.show.assert_called_once()
 
-    @patch("notifier.core.notify._get_toaster")
-    def test_cooldown_suppresses_second_notification(self, mock_get_toaster):
+    @patch("notifier.core.notify.Notification")
+    def test_cooldown_suppresses_second_notification(self, mock_notify_cls):
         from notifier.core.notify import _cooldowns
         _cooldowns.clear()
-        mock_toaster = MagicMock()
-        mock_get_toaster.return_value = mock_toaster
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
 
         event = _make_event(EventCategory.DONE, project_name="p1")
         dispatch_notification(event)
         result2 = dispatch_notification(event)
 
         assert result2 is False
-        assert mock_toaster.show_toast.call_count == 1
+        assert mock_notify_cls.call_count == 1
 
-    @patch("notifier.core.notify._get_toaster")
-    def test_different_projects_both_notify(self, mock_get_toaster):
+    @patch("notifier.core.notify.Notification")
+    def test_different_projects_both_notify(self, mock_notify_cls):
         from notifier.core.notify import _cooldowns
         _cooldowns.clear()
-        mock_toaster = MagicMock()
-        mock_get_toaster.return_value = mock_toaster
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
 
         dispatch_notification(_make_event(EventCategory.IDLE, project_name="alpha"))
         dispatch_notification(_make_event(EventCategory.IDLE, project_name="beta"))
 
-        assert mock_toaster.show_toast.call_count == 2
+        assert mock_notify_cls.call_count == 2

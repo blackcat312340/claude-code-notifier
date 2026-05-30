@@ -12,19 +12,11 @@ NOTIFY_CATEGORIES: Set[EventCategory] = {
     EventCategory.DONE,
 }
 
+# winotify for Windows native toast notifications (WinRT-based, no message pump needed)
+from winotify import Notification
+
 # In-memory cooldown tracker: {(project_name, category): last_notification_timestamp}
 _cooldowns: Dict[Tuple[str, str], float] = {}
-
-# Lazy-initialized toaster
-_toaster = None
-
-
-def _get_toaster():
-    global _toaster
-    if _toaster is None:
-        from win10toast import ToastNotifier
-        _toaster = ToastNotifier()
-    return _toaster
 
 
 def _category_value(category):
@@ -99,12 +91,12 @@ def dispatch_notification(event: NotifierEvent) -> bool:
 
     try:
         body = _build_body(event)
-        _get_toaster().show_toast(
+        Notification(
+            app_id="Claude Code Notifier",
             title=project,
             msg=body,
-            duration=5,
-            threaded=True,
-        )
+            duration="short",
+        ).show()
         logging.info(
             "Notification sent: %s | project=%s | category=%s",
             event.hook_event_name,
