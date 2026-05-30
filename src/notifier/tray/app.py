@@ -101,8 +101,12 @@ class NotifierTray:
         session_word = "session" if count == 1 else "sessions"
         return f"Claude Code Notifier - Monitoring ({count} {session_word})"
 
-    def _build_menu(self):
-        """Build dynamic tray menu (D-03, D-04)."""
+    def _build_menu(self, icon=None):
+        """Build dynamic tray menu (D-03, D-04).
+
+        Called by pystray on every right-click. pystray passes the Icon
+        instance as the first argument to dynamic menu callables.
+        """
         from notifier.tray.menu import build_menu
         return build_menu(self)
 
