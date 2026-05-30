@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 notifier-hook = "notifier.cli.hook:app"
+notifier-config = "notifier.cli.config:app"
 
 [tool.pytest.ini_options]
 testpaths = ["src/notifier/tests"]
