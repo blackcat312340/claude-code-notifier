@@ -17,7 +17,7 @@ progress:
 **Project:** Claude Code Notifier
 **Status:** Phase 1 complete — ready for Phase 2
 **Current focus:** Phase 2 - First Useful Reminders
-**Current workflow step:** Phase 1 verified → next: `gsd-discuss-phase 2`
+**Current workflow step:** Phase 2 context gathered → next: `gsd-plan-phase 2`
 **Project mode:** MVP
 
 ## Project Reference
@@ -48,4 +48,4 @@ See: `.planning/PROJECT.md` (updated 2026-05-29)
 Run `/gsd-plan-phase 1` to create a detailed implementation plan from the captured context.
 
 ---
-*Last updated: 2026-05-30 after Phase 1 verified*
+*Last updated: 2026-05-30 after Phase 2 context gathered*
