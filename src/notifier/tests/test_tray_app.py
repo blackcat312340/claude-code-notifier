@@ -59,9 +59,9 @@ class TestNotifierTray:
         text = tray._tooltip_text()
         assert "1" in text
 
-    def test_create_menu_exists(self):
+    def test_build_menu_exists(self):
         tray = NotifierTray()
-        menu = tray._create_menu()
+        menu = tray._build_menu()
         assert menu is not None
 
     def test_patched_handler_enqueues_events(self):
@@ -101,3 +101,23 @@ class TestNotifierTray:
         assert tray._icon.title is not None
         assert "1" in tray._icon.title
         assert "Monitoring" in tray._icon.title
+
+    def test_event_history_initialized(self):
+        tray = NotifierTray()
+        assert hasattr(tray, 'event_history')
+        assert tray.event_history.maxlen == 50
+        assert len(tray.event_history) == 0
+
+    def test_patched_handler_records_history(self):
+        tray = NotifierTray()
+        tray._patch_server_handler()
+
+        from notifier.core.events import EventCategory, NotifierEvent, SessionInfo
+        event = NotifierEvent(
+            category=EventCategory.PERMISSION,
+            session=SessionInfo("s1", "/t/test", "test"),
+            hook_event_name="Notification",
+        )
+        tray.server._update_session(event)
+        assert len(tray.event_history) == 1
+        assert tray.event_history[0] is event
