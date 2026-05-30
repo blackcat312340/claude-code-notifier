@@ -70,14 +70,14 @@
 | HOOK-03 | Phase 1 | Verified |
 | SESS-01 | Phase 1 | Verified |
 | SESS-02 | Phase 1 | Verified |
-| SESS-03 | Phase 3 | Pending |
+| SESS-03 | Phase 3 | Verified |
 | ATTN-01 | Phase 2 | Verified |
 | ATTN-02 | Phase 2 | Verified |
 | ATTN-03 | Phase 2 | Verified |
 | TRAY-01 | Phase 2 | Verified |
-| TRAY-02 | Phase 3 | Pending |
+| TRAY-02 | Phase 3 | Verified |
 | TRAY-03 | Phase 5 | Pending |
-| TRAY-04 | Phase 3 | Pending |
+| TRAY-04 | Phase 3 | Verified |
 | ANOM-01 | Phase 4 | Pending |
 | ANOM-02 | Phase 4 | Pending |
 | ANOM-03 | Phase 4 | Pending |

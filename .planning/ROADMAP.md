@@ -61,6 +61,13 @@ Plans:
 3. A developer can understand why a notification fired without reading raw hook payloads
 4. A developer can navigate from the tray surface back to the relevant project or session context
 
+**Plans:** 1 plan
+
+Plans:
+**Wave 1**
+
+- [x] 03-01-PLAN.md -- Event History + Trust Surface (SESS-03, TRAY-02, TRAY-04)
+
 ### Phase 4: Abnormal-State Detection
 
 **Goal:** Extend the notifier beyond direct hook notifications by detecting stalled or abnormal Claude sessions.
