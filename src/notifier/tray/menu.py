@@ -14,6 +14,8 @@ def _format_event(event, index):
     # Relative time
     try:
         ts = datetime.fromisoformat(event.timestamp)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
         delta = datetime.now(timezone.utc) - ts
         mins = int(delta.total_seconds() / 60)
         if mins < 1:
@@ -57,6 +59,11 @@ def build_menu(tray):
         items.append(pystray.MenuItem(label, _make_action(ev)))
 
     if items:
+        items.append(pystray.Menu.SEPARATOR)
+    else:
+        items.append(pystray.MenuItem(
+            "No events yet", lambda icon, item: None,
+        ))
         items.append(pystray.Menu.SEPARATOR)
 
     items.append(
