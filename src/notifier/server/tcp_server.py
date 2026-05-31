@@ -100,13 +100,18 @@ class NotifierServer:
 
     async def serve(self):
         """Start the TCP server and run forever."""
-        server = await asyncio.start_server(
+        self._server = await asyncio.start_server(
             self._handle_client, host=HOST, port=PORT
         )
-        addr = server.sockets[0].getsockname()
+        addr = self._server.sockets[0].getsockname()
         logging.info("Notifier TCP server listening on %s:%s", addr[0], addr[1])
-        async with server:
-            await server.serve_forever()
+        async with self._server:
+            await self._server.serve_forever()
+
+    def close(self):
+        """Close the TCP server gracefully."""
+        if hasattr(self, '_server') and self._server:
+            self._server.close()
 
 
 def main():

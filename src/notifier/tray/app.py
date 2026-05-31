@@ -75,6 +75,8 @@ class NotifierTray:
         self._loop = loop
         try:
             loop.run_until_complete(self.server.serve())
+        except asyncio.CancelledError:
+            pass  # Normal shutdown — loop was stopped
         except Exception as exc:
             logging.error("TCP server error: %s", exc)
 
@@ -115,15 +117,9 @@ class NotifierTray:
         self._notify_queue.put(None)  # Signal worker to stop
         icon.stop()
         if self._loop and self._loop.is_running():
-            # Gracefully stop the asyncio event loop by cancelling pending tasks first
-            async def _stop():
-                tasks = [t for t in asyncio.all_tasks(self._loop)
-                         if t is not asyncio.current_task()]
-                for task in tasks:
-                    task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
-                self._loop.stop()
-            asyncio.run_coroutine_threadsafe(_stop(), self._loop)
+            # Close server gracefully to avoid pending task warnings
+            self._loop.call_soon_threadsafe(self.server.close)
+            self._loop.call_soon_threadsafe(self._loop.stop)
         logging.info("Notifier tray shutting down")
 
     def run(self):
