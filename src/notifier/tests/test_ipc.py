@@ -2,8 +2,9 @@
 import pytest
 import asyncio
 import json
-from notifier.core.events import EventCategory, NotifierEvent, SessionInfo
+from notifier.core.events import EventCategory, Provider, NotifierEvent, SessionInfo
 from notifier.core.ipc import send_event_or_drop
+from notifier.server.tcp_server import NotifierServer, SessionRecord
 
 
 class TestSendEventOrDrop:
@@ -77,3 +78,67 @@ class TestSendEventOrDrop:
         assert text.endswith("\n"), "NDJSON must end with newline"
         parsed = json.loads(text.strip())
         assert parsed["hook_event_name"] == "SessionStart"
+
+
+class TestProviderAwareSessionRegistry:
+    """D-04: Provider-aware session registry keys."""
+
+    def test_registry_key_includes_provider(self):
+        """_registry_key includes provider, session_id, and cwd."""
+        server = NotifierServer()
+        key = server._registry_key("claude_code", "s1", "/test")
+        assert key == "claude_code||s1||/test"
+
+    def test_provider_separated_keys(self):
+        """Same session_id/cwd but different provider -> distinct keys."""
+        server = NotifierServer()
+        key_cc = server._registry_key("claude_code", "s1", "/test")
+        key_cx = server._registry_key("codex", "s1", "/test")
+        assert key_cc != key_cx
+
+    def test_provider_recorded_in_session_record(self):
+        """_update_session stores provider in SessionRecord."""
+        server = NotifierServer()
+        session = SessionInfo("s1", "/test", "test", provider=Provider.CODEX)
+        event = NotifierEvent(
+            category=EventCategory.DONE,
+            session=session,
+            hook_event_name="Stop",
+            provider=Provider.CODEX,
+        )
+        server._update_session(event)
+        key = server._registry_key("codex", "s1", "/test")
+        assert key in server.session_registry
+        assert server.session_registry[key].provider == "codex"
+
+    def test_codex_and_claude_sessions_dont_collide(self):
+        """Same (session_id, cwd) from Claude Code and Codex -> two records."""
+        server = NotifierServer()
+
+        # Claude Code event
+        session_cc = SessionInfo("s1", "/test", "test", provider=Provider.CLAUDE_CODE)
+        event_cc = NotifierEvent(
+            category=EventCategory.DONE,
+            session=session_cc,
+            hook_event_name="Stop",
+            provider=Provider.CLAUDE_CODE,
+        )
+        server._update_session(event_cc)
+
+        # Codex event with same session_id/cwd
+        session_cx = SessionInfo("s1", "/test", "test", provider=Provider.CODEX)
+        event_cx = NotifierEvent(
+            category=EventCategory.PERMISSION,
+            session=session_cx,
+            hook_event_name="PermissionRequest",
+            provider=Provider.CODEX,
+        )
+        server._update_session(event_cx)
+
+        assert len(server.session_registry) == 2
+        cc_key = server._registry_key("claude_code", "s1", "/test")
+        cx_key = server._registry_key("codex", "s1", "/test")
+        assert cc_key in server.session_registry
+        assert cx_key in server.session_registry
+        assert server.session_registry[cc_key].provider == "claude_code"
+        assert server.session_registry[cx_key].provider == "codex"
