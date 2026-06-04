@@ -63,7 +63,7 @@ class NotifierTray:
                 count = len(self.server.session_registry)
                 s = "sessions" if count != 1 else "session"
                 self._icon.title = (
-                    f"Claude Code Notifier - Monitoring ({count} {s})"
+                    f"Claude Code Notifier - 监控中 ({count} {s})"
                 )
 
         self.server._update_session = patched_update
@@ -101,7 +101,7 @@ class NotifierTray:
         """Build initial tooltip text (D-13)."""
         count = len(self.server.session_registry)
         session_word = "session" if count == 1 else "sessions"
-        return f"Claude Code Notifier - Monitoring ({count} {session_word})"
+        return f"Claude Code Notifier - 监控中 ({count} {session_word})"
 
     def _build_menu(self, icon=None):
         """Build dynamic tray menu (D-03, D-04).
