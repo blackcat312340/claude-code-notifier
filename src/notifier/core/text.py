@@ -70,11 +70,16 @@ def notification_body(event: NotifierEvent) -> str:
 
     Per D-12, D-14: covers notification copy, concise tool-style.
     Includes category label and, when available, message detail.
+    Per T-031-06: messages are truncated to 200 chars to prevent
+    overly long notification text.
     Examples: "需要授权 - Bash", "任务已完成", "等待输入"
     """
     label = category_label(event.category)
     detail = event.message
     if detail:
+        # Truncate long messages (T-031-06: DoS via long messages)
+        if len(detail) > 200:
+            detail = detail[:200] + "..."
         return f"{label} - {detail}"
     return label
 

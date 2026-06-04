@@ -11,6 +11,7 @@ from notifier.core.notify import (
     NOTIFY_CATEGORIES,
     _check_cooldown,
     _build_body,
+    should_notify,
 )
 from notifier.core.text import (
     provider_label,
@@ -35,151 +36,9 @@ def _make_event(category, project_name="my-project", message=None):
     )
 
 
-class TestNotifyCategories:
-    """D-05: Only PERMISSION, IDLE, DONE produce notifications."""
-
-    def test_permission_in_notify_set(self):
-        assert EventCategory.PERMISSION in NOTIFY_CATEGORIES
-
-    def test_idle_in_notify_set(self):
-        assert EventCategory.IDLE in NOTIFY_CATEGORIES
-
-    def test_done_in_notify_set(self):
-        assert EventCategory.DONE in NOTIFY_CATEGORIES
-
-    def test_error_not_in_notify_set(self):
-        assert EventCategory.ERROR not in NOTIFY_CATEGORIES
-
-
-class TestBuildBody:
-    """D-04: Notification body format per category."""
-
-    def test_permission_body(self):
-        event = _make_event(EventCategory.PERMISSION, message="Claude wants to run npm install")
-        body = _build_body(event)
-        assert "Permission needed" in body
-        assert "Claude wants to run npm install" in body
-
-    def test_permission_body_no_message(self):
-        event = _make_event(EventCategory.PERMISSION, message=None)
-        body = _build_body(event)
-        assert "Permission needed" in body
-
-    def test_idle_body(self):
-        event = _make_event(EventCategory.IDLE, message="Awaiting instructions")
-        body = _build_body(event)
-        assert "Waiting for input" in body
-        assert "Awaiting instructions" in body
-
-    def test_idle_body_no_message(self):
-        event = _make_event(EventCategory.IDLE, message=None)
-        body = _build_body(event)
-        assert "Waiting for input" in body
-
-    def test_done_body(self):
-        event = _make_event(EventCategory.DONE, message="Task complete")
-        body = _build_body(event)
-        assert "Task complete" in body
-
-    def test_done_body_truncates_long_message(self):
-        long_msg = "x" * 300
-        event = _make_event(EventCategory.DONE, message=long_msg)
-        body = _build_body(event)
-        assert len(body) <= 220  # "Task complete — " + 200 chars
-
-
-class TestCheckCooldown:
-    """D-06: 30s cooldown per (project, category)."""
-
-    def test_first_call_returns_true(self):
-        from notifier.core.notify import _cooldowns
-        _cooldowns.clear()
-        assert _check_cooldown("proj-a", EventCategory.PERMISSION) is True
-
-    def test_second_call_within_cooldown_returns_false(self):
-        from notifier.core.notify import _cooldowns
-        _cooldowns.clear()
-        _check_cooldown("proj-b", EventCategory.IDLE)
-        assert _check_cooldown("proj-b", EventCategory.IDLE) is False
-
-    def test_different_project_allowed(self):
-        from notifier.core.notify import _cooldowns
-        _cooldowns.clear()
-        _check_cooldown("proj-a", EventCategory.PERMISSION)
-        assert _check_cooldown("proj-b", EventCategory.PERMISSION) is True
-
-    def test_different_category_same_project_allowed(self):
-        from notifier.core.notify import _cooldowns
-        _cooldowns.clear()
-        _check_cooldown("proj-a", EventCategory.PERMISSION)
-        assert _check_cooldown("proj-a", EventCategory.IDLE) is True
-
-    def test_cooldown_uses_period(self):
-        """Verify NOTIFY_COOLDOWN_S is the period used."""
-        assert NOTIFY_COOLDOWN_S == 5
-
-
-class TestDispatchNotification:
-    """Integration: dispatch_notification with winotify mock."""
-
-    def test_error_event_returns_false(self):
-        event = _make_event(EventCategory.ERROR)
-        result = dispatch_notification(event)
-        assert result is False
-
-    @patch("notifier.core.notify.Notification")
-    def test_permission_event_sends_notification(self, mock_notify_cls):
-        from notifier.core.notify import _cooldowns
-        _cooldowns.clear()
-        mock_notify = MagicMock()
-        mock_notify_cls.return_value = mock_notify
-
-        event = _make_event(
-            EventCategory.PERMISSION,
-            project_name="my-project",
-            message="Claude wants to run npm install",
-        )
-        result = dispatch_notification(event)
-
-        assert result is True
-        mock_notify_cls.assert_called_once()
-        kwargs = mock_notify_cls.call_args.kwargs
-        assert kwargs["title"] == "my-project"
-        assert "Permission needed" in kwargs["msg"]
-        assert kwargs["app_id"] == "Claude Code Notifier"
-        mock_notify.show.assert_called_once()
-
-    @patch("notifier.core.notify.Notification")
-    def test_cooldown_suppresses_second_notification(self, mock_notify_cls):
-        from notifier.core.notify import _cooldowns
-        _cooldowns.clear()
-        mock_notify = MagicMock()
-        mock_notify_cls.return_value = mock_notify
-
-        event = _make_event(EventCategory.DONE, project_name="p1")
-        dispatch_notification(event)
-        result2 = dispatch_notification(event)
-
-        assert result2 is False
-        assert mock_notify_cls.call_count == 1
-
-    @patch("notifier.core.notify.Notification")
-    def test_different_projects_both_notify(self, mock_notify_cls):
-        from notifier.core.notify import _cooldowns
-        _cooldowns.clear()
-        mock_notify = MagicMock()
-        mock_notify_cls.return_value = mock_notify
-
-        dispatch_notification(_make_event(EventCategory.IDLE, project_name="alpha"))
-        dispatch_notification(_make_event(EventCategory.IDLE, project_name="beta"))
-
-        assert mock_notify_cls.call_count == 2
-
-
 # ---------------------------------------------------------------------------
-# Task 1: Centralized display text helpers (text.py)
+# Helper: event with explicit provider
 # ---------------------------------------------------------------------------
-
 
 def _make_event_with_provider(
     category,
@@ -201,6 +60,304 @@ def _make_event_with_provider(
         provider=provider,
     )
 
+
+# ---------------------------------------------------------------------------
+# Category membership
+# ---------------------------------------------------------------------------
+
+class TestNotifyCategories:
+    """D-05: Only PERMISSION, IDLE, DONE produce notifications."""
+
+    def test_permission_in_notify_set(self):
+        assert EventCategory.PERMISSION in NOTIFY_CATEGORIES
+
+    def test_idle_in_notify_set(self):
+        assert EventCategory.IDLE in NOTIFY_CATEGORIES
+
+    def test_done_in_notify_set(self):
+        assert EventCategory.DONE in NOTIFY_CATEGORIES
+
+    def test_error_not_in_notify_set(self):
+        assert EventCategory.ERROR not in NOTIFY_CATEGORIES
+
+
+# ---------------------------------------------------------------------------
+# should_notify (D-08, D-10)
+# ---------------------------------------------------------------------------
+
+class TestShouldNotify:
+    """Event-level notification eligibility."""
+
+    def test_permission_should_notify(self):
+        event = _make_event_with_provider(EventCategory.PERMISSION)
+        assert should_notify(event) is True
+
+    def test_idle_should_notify(self):
+        event = _make_event_with_provider(EventCategory.IDLE)
+        assert should_notify(event) is True
+
+    def test_done_should_notify(self):
+        event = _make_event_with_provider(EventCategory.DONE)
+        assert should_notify(event) is True
+
+    def test_error_should_not_notify(self):
+        event = _make_event_with_provider(EventCategory.ERROR)
+        assert should_notify(event) is False
+
+    def test_session_start_should_not_notify_claude(self):
+        event = _make_event_with_provider(
+            EventCategory.IDLE,
+            provider=Provider.CLAUDE_CODE,
+            hook_event_name="SessionStart",
+        )
+        assert should_notify(event) is False
+
+    def test_session_start_should_not_notify_codex(self):
+        event = _make_event_with_provider(
+            EventCategory.IDLE,
+            provider=Provider.CODEX,
+            hook_event_name="SessionStart",
+        )
+        assert should_notify(event) is False
+
+
+# ---------------------------------------------------------------------------
+# _build_body — now delegates to Chinese notification_body
+# ---------------------------------------------------------------------------
+
+class TestBuildBody:
+    """D-04: Notification body format per category (now Chinese-first)."""
+
+    def test_permission_body_cn(self):
+        event = _make_event(EventCategory.PERMISSION, message="Bash")
+        body = _build_body(event)
+        assert "需要授权" in body
+        assert "Bash" in body
+
+    def test_permission_body_no_message_cn(self):
+        event = _make_event(EventCategory.PERMISSION, message=None)
+        body = _build_body(event)
+        assert "需要授权" in body
+
+    def test_idle_body_cn(self):
+        event = _make_event(EventCategory.IDLE, message="Awaiting instructions")
+        body = _build_body(event)
+        assert "等待输入" in body
+        assert "Awaiting instructions" in body
+
+    def test_idle_body_no_message_cn(self):
+        event = _make_event(EventCategory.IDLE, message=None)
+        body = _build_body(event)
+        assert "等待输入" in body
+
+    def test_done_body_cn(self):
+        event = _make_event(EventCategory.DONE, message="Task complete")
+        body = _build_body(event)
+        assert "任务已完成" in body
+
+    def test_done_body_truncates_long_message(self):
+        long_msg = "x" * 300
+        event = _make_event(EventCategory.DONE, message=long_msg)
+        body = _build_body(event)
+        # "任务已完成 - " prefix + up to 200 chars + "..."
+        assert len(body) <= 220
+
+
+# ---------------------------------------------------------------------------
+# Provider-aware cooldown
+# ---------------------------------------------------------------------------
+
+class TestCheckCooldown:
+    """Provider-aware cooldown per (provider, project, category)."""
+
+    def test_first_call_returns_true(self):
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        assert _check_cooldown("claude_code", "proj-a", EventCategory.PERMISSION) is True
+
+    def test_second_call_within_cooldown_returns_false(self):
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        _check_cooldown("claude_code", "proj-b", EventCategory.IDLE)
+        assert _check_cooldown("claude_code", "proj-b", EventCategory.IDLE) is False
+
+    def test_different_project_allowed(self):
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        _check_cooldown("claude_code", "proj-a", EventCategory.PERMISSION)
+        assert _check_cooldown("claude_code", "proj-b", EventCategory.PERMISSION) is True
+
+    def test_different_category_same_project_allowed(self):
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        _check_cooldown("claude_code", "proj-a", EventCategory.PERMISSION)
+        assert _check_cooldown("claude_code", "proj-a", EventCategory.IDLE) is True
+
+    def test_cooldown_uses_period(self):
+        """Verify NOTIFY_COOLDOWN_S is the period used."""
+        assert NOTIFY_COOLDOWN_S == 5
+
+    def test_different_provider_same_project_allowed(self):
+        """Cooldown does not cross-suppress different providers."""
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        # Claude Code permission fires
+        assert _check_cooldown("claude_code", "proj-a", EventCategory.PERMISSION) is True
+        # Codex permission for same project should still fire
+        assert _check_cooldown("codex", "proj-a", EventCategory.PERMISSION) is True
+
+    def test_same_provider_cross_suppresses(self):
+        """Same provider, same project, same category -> suppressed."""
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        _check_cooldown("claude_code", "proj-a", EventCategory.DONE)
+        assert _check_cooldown("claude_code", "proj-a", EventCategory.DONE) is False
+
+
+# ---------------------------------------------------------------------------
+# dispatch_notification integration
+# ---------------------------------------------------------------------------
+
+class TestDispatchNotification:
+    """Integration: dispatch_notification with winotify mock."""
+
+    def test_error_event_returns_false(self):
+        event = _make_event(EventCategory.ERROR)
+        result = dispatch_notification(event)
+        assert result is False
+
+    def test_session_start_returns_false(self):
+        """D-08: SessionStart must not notify."""
+        event = _make_event_with_provider(
+            EventCategory.IDLE,
+            provider=Provider.CLAUDE_CODE,
+            hook_event_name="SessionStart",
+        )
+        result = dispatch_notification(event)
+        assert result is False
+
+    @patch("notifier.core.notify.Notification")
+    def test_permission_event_sends_notification(self, mock_notify_cls):
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
+
+        event = _make_event_with_provider(
+            EventCategory.PERMISSION,
+            project_name="my-project",
+            message="Bash",
+            provider=Provider.CLAUDE_CODE,
+        )
+        result = dispatch_notification(event)
+
+        assert result is True
+        mock_notify_cls.assert_called_once()
+        kwargs = mock_notify_cls.call_args.kwargs
+        # Provider-aware title
+        assert kwargs["title"] == "Claude Code - my-project"
+        # Chinese-first body
+        assert "需要授权" in kwargs["msg"]
+        assert "Bash" in kwargs["msg"]
+        assert kwargs["app_id"] == "Claude Code Notifier"
+        mock_notify.show.assert_called_once()
+
+    @patch("notifier.core.notify.Notification")
+    def test_codex_permission_title_includes_codex(self, mock_notify_cls):
+        """Codex notification title shows 'Codex' source."""
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
+
+        event = _make_event_with_provider(
+            EventCategory.PERMISSION,
+            project_name="notifier",
+            message="npm install",
+            provider=Provider.CODEX,
+        )
+        result = dispatch_notification(event)
+
+        assert result is True
+        kwargs = mock_notify_cls.call_args.kwargs
+        assert kwargs["title"] == "Codex - notifier"
+        assert "需要授权" in kwargs["msg"]
+
+    @patch("notifier.core.notify.Notification")
+    def test_cooldown_suppresses_second_notification(self, mock_notify_cls):
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
+
+        event = _make_event_with_provider(
+            EventCategory.DONE, project_name="p1",
+            provider=Provider.CLAUDE_CODE,
+        )
+        dispatch_notification(event)
+        result2 = dispatch_notification(event)
+
+        assert result2 is False
+        assert mock_notify_cls.call_count == 1
+
+    @patch("notifier.core.notify.Notification")
+    def test_different_projects_both_notify(self, mock_notify_cls):
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
+
+        dispatch_notification(_make_event_with_provider(
+            EventCategory.IDLE, project_name="alpha",
+            provider=Provider.CLAUDE_CODE,
+        ))
+        dispatch_notification(_make_event_with_provider(
+            EventCategory.IDLE, project_name="beta",
+            provider=Provider.CLAUDE_CODE,
+        ))
+
+        assert mock_notify_cls.call_count == 2
+
+    @patch("notifier.core.notify.Notification")
+    def test_different_providers_both_notify(self, mock_notify_cls):
+        """Cooldown separates providers — Codex and Claude Code both fire."""
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
+
+        dispatch_notification(_make_event_with_provider(
+            EventCategory.PERMISSION, project_name="shared-proj",
+            provider=Provider.CLAUDE_CODE, message="Claude needs auth",
+        ))
+        dispatch_notification(_make_event_with_provider(
+            EventCategory.PERMISSION, project_name="shared-proj",
+            provider=Provider.CODEX, message="Codex needs auth",
+        ))
+
+        assert mock_notify_cls.call_count == 2
+
+    @patch("notifier.core.notify.Notification")
+    def test_codex_done_body_uses_chinese_label(self, mock_notify_cls):
+        """Claude Code done body includes 任务已完成."""
+        from notifier.core.notify import _cooldowns
+        _cooldowns.clear()
+        mock_notify = MagicMock()
+        mock_notify_cls.return_value = mock_notify
+
+        event = _make_event_with_provider(
+            EventCategory.DONE,
+            provider=Provider.CLAUDE_CODE,
+            message="Build passed",
+        )
+        dispatch_notification(event)
+        kwargs = mock_notify_cls.call_args.kwargs
+        assert "任务已完成" in kwargs["msg"]
+
+
+# ---------------------------------------------------------------------------
+# Task 1: Centralized display text helpers (text.py)
+# ---------------------------------------------------------------------------
 
 class TestProviderLabel:
     """provider_label returns stable, recognizable provider names."""
@@ -312,6 +469,16 @@ class TestNotificationBody:
         body = notification_body(event)
         assert "需要检查 - Unknown event type: Foo" == body
 
+    def test_long_message_truncated(self):
+        long_msg = "x" * 300
+        event = _make_event_with_provider(
+            EventCategory.DONE, message=long_msg,
+        )
+        body = notification_body(event)
+        # Should be truncated with "..."
+        assert "..." in body
+        assert len(body) <= 220
+
 
 class TestEventMenuLabel:
     """event_menu_label combines provider, category value, Chinese label, and time."""
@@ -361,8 +528,8 @@ class TestRelativeTimeCN:
         assert int(result.split()[0]) >= 4
 
     def test_naive_timestamp(self):
-        from datetime import datetime, timedelta
-        ts = (datetime.utcnow() - timedelta(seconds=65)).isoformat()
+        from datetime import datetime, timedelta, timezone
+        ts = (datetime.now(timezone.utc) - timedelta(seconds=65)).isoformat()
         result = relative_time_cn(ts)
         assert "分钟前" in result
 

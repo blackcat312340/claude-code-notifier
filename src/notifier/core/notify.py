@@ -1,7 +1,9 @@
 import logging
 import time
 from typing import Dict, Set, Tuple
-from notifier.core.events import EventCategory, NotifierEvent
+
+from notifier.core.events import EventCategory, NotifierEvent, Provider
+from notifier.core.text import notification_title, notification_body
 
 NOTIFY_COOLDOWN_S = 5
 
@@ -15,8 +17,8 @@ NOTIFY_CATEGORIES: Set[EventCategory] = {
 # winotify for Windows native toast notifications (WinRT-based, no message pump needed)
 from winotify import Notification
 
-# In-memory cooldown tracker: {(project_name, category): last_notification_timestamp}
-_cooldowns: Dict[Tuple[str, str], float] = {}
+# In-memory cooldown tracker: {(provider, project_name, category): last_notification_timestamp}
+_cooldowns: Dict[Tuple[str, str, str], float] = {}
 
 
 def _category_value(category):
@@ -26,12 +28,36 @@ def _category_value(category):
     return str(category)
 
 
-def _check_cooldown(project_name: str, category: EventCategory) -> bool:
+def _provider_value(provider):
+    """Extract string value from Provider enum or plain string."""
+    if isinstance(provider, Provider):
+        return provider.value
+    return str(provider)
+
+
+def should_notify(event: NotifierEvent) -> bool:
+    """Return True if this event should trigger a desktop notification.
+
+    Per D-08, D-10: SessionStart and ERROR events must not notify.
+    Unknown Codex/error records are classified as ERROR upstream and
+    are suppressed here as well.
+    """
+    # ERROR category never notifies (includes unknown Codex events per D-10)
+    if event.category == EventCategory.ERROR:
+        return False
+    # SessionStart never notifies (D-08: session/history update only)
+    if event.hook_event_name == "SessionStart":
+        return False
+    return True
+
+
+def _check_cooldown(provider: str, project_name: str, category: EventCategory) -> bool:
     """Return True if enough time has passed since last notification for this key.
 
-    Per D-06: 30 second cooldown per (project_name, category) composite key.
+    Per D-02: cooldown key is provider-aware to avoid Claude Code and Codex
+    events suppressing each other for the same project/category.
     """
-    key = (project_name, _category_value(category))
+    key = (provider, project_name, _category_value(category))
     now = time.monotonic()
     last = _cooldowns.get(key, 0.0)
     if now - last >= NOTIFY_COOLDOWN_S:
@@ -41,25 +67,8 @@ def _check_cooldown(project_name: str, category: EventCategory) -> bool:
 
 
 def _build_body(event: NotifierEvent) -> str:
-    """Build notification body text per D-04 format rules.
-
-    PERMISSION: "Permission needed - {message or 'Claude needs your attention'}"
-    IDLE: "Waiting for input - {message or 'Claude is idle and awaiting further instructions'}"
-    DONE: "Task complete - {message[:200] or 'Claude finished the current task'}"
-    """
-    if event.category == EventCategory.PERMISSION:
-        detail = event.message or "Claude needs your attention"
-        return f"Permission needed - {detail}"
-
-    if event.category == EventCategory.IDLE:
-        detail = event.message or "Claude is idle and awaiting further instructions"
-        return f"Waiting for input - {detail}"
-
-    if event.category == EventCategory.DONE:
-        detail = (event.message or "Claude finished the current task")[:200]
-        return f"Task complete - {detail}"
-
-    return str(_category_value(event.category))
+    """Build notification body text — delegates to centralized Chinese helpers."""
+    return notification_body(event)
 
 
 def dispatch_notification(event: NotifierEvent) -> bool:
@@ -68,38 +77,42 @@ def dispatch_notification(event: NotifierEvent) -> bool:
     Returns True if a notification was shown, False if suppressed
     (wrong category, cooldown active, or notification failure).
     """
-    # D-05: Only notify for PERMISSION, IDLE, DONE
-    if event.category not in NOTIFY_CATEGORIES:
-        if event.category == EventCategory.ERROR:
+    # Per D-08, D-10: event-level notification eligibility
+    if not should_notify(event):
+        if event.category == EventCategory.ERROR or event.hook_event_name == "SessionStart":
             logging.info(
-                "ERROR event logged (no notification): %s (session=%s)",
+                "Event suppressed (no notification): %s category=%s (session=%s)",
                 event.hook_event_name,
+                _category_value(event.category),
                 event.session.session_id,
             )
         return False
 
+    provider_str = _provider_value(event.provider)
     project = event.session.project_name
 
-    # D-06: 30s cooldown
-    if not _check_cooldown(project, event.category):
+    # Per D-02: provider-aware cooldown
+    if not _check_cooldown(provider_str, project, event.category):
         logging.debug(
-            "Notification suppressed (cooldown): %s/%s",
+            "Notification suppressed (cooldown): %s/%s/%s",
+            provider_str,
             project,
             _category_value(event.category),
         )
         return False
 
     try:
-        body = _build_body(event)
+        body = notification_body(event)
         Notification(
             app_id="Claude Code Notifier",
-            title=project,
+            title=notification_title(event),
             msg=body,
             duration="short",
         ).show()
         logging.info(
-            "Notification sent: %s | project=%s | category=%s",
+            "Notification sent: %s | provider=%s | project=%s | category=%s",
             event.hook_event_name,
+            provider_str,
             project,
             _category_value(event.category),
         )
