@@ -2,7 +2,7 @@
 import pytest
 import asyncio
 import json
-from notifier.core.events import EventCategory
+from notifier.core.events import EventCategory, Provider
 from notifier.cli.hook import process_hook_event
 
 
@@ -85,3 +85,123 @@ class TestProcessHookEvent:
         # Should not raise any exception
         result = process_hook_event(raw, "Notification", host="127.0.0.1", port=48998, timeout=1)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_process_codex_permission_request(self):
+        """Codex PermissionRequest -> PERMISSION, forwarded with provider=codex."""
+        received = []
+
+        async def handler(reader, writer):
+            data = await reader.readline()
+            received.append(data)
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        async with server:
+            raw = {
+                "session_id": "sess-codex-001",
+                "cwd": "/projects/codex-app",
+                "message": "Codex wants to run a command",
+                "tool_name": "Bash",
+            }
+            process_hook_event(raw, "PermissionRequest", provider="codex",
+                               host="127.0.0.1", port=port)
+            await asyncio.sleep(0.2)
+
+        assert len(received) == 1
+        parsed = json.loads(received[0].decode().strip())
+        assert parsed["hook_event_name"] == "PermissionRequest"
+        assert parsed["category"] == "permission"
+        assert parsed["provider"] == "codex"
+        assert parsed["session"]["provider"] == "codex"
+        assert parsed["session"]["project_name"] == "codex-app"
+
+    @pytest.mark.asyncio
+    async def test_process_codex_stop_event(self):
+        """Codex Stop -> DONE, forwarded with provider=codex."""
+        received = []
+
+        async def handler(reader, writer):
+            data = await reader.readline()
+            received.append(data)
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        async with server:
+            raw = {
+                "session_id": "sess-codex-002",
+                "cwd": "/projects/codex-app",
+                "final_response": "Task completed successfully",
+            }
+            process_hook_event(raw, "Stop", provider="codex",
+                               host="127.0.0.1", port=port)
+            await asyncio.sleep(0.2)
+
+        assert len(received) == 1
+        parsed = json.loads(received[0].decode().strip())
+        assert parsed["category"] == "done"
+        assert parsed["provider"] == "codex"
+        assert parsed["session"]["provider"] == "codex"
+
+    @pytest.mark.asyncio
+    async def test_process_codex_session_start(self):
+        """Codex SessionStart -> IDLE, forwarded with provider=codex."""
+        received = []
+
+        async def handler(reader, writer):
+            data = await reader.readline()
+            received.append(data)
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        async with server:
+            raw = {
+                "session_id": "sess-codex-003",
+                "cwd": "/projects/codex-app",
+            }
+            process_hook_event(raw, "SessionStart", provider="codex",
+                               host="127.0.0.1", port=port)
+            await asyncio.sleep(0.2)
+
+        assert len(received) == 1
+        parsed = json.loads(received[0].decode().strip())
+        assert parsed["category"] == "idle"
+        assert parsed["provider"] == "codex"
+        assert parsed["hook_event_name"] == "SessionStart"
+
+    @pytest.mark.asyncio
+    async def test_process_legacy_claude_code_still_works(self):
+        """process_hook_event without provider defaults to claude_code."""
+        received = []
+
+        async def handler(reader, writer):
+            data = await reader.readline()
+            received.append(data)
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        async with server:
+            raw = {
+                "session_id": "sess-004",
+                "cwd": "/projects/my-app",
+                "notification_type": "idle_prompt",
+            }
+            process_hook_event(raw, "Notification", host="127.0.0.1", port=port)
+            await asyncio.sleep(0.2)
+
+        assert len(received) == 1
+        parsed = json.loads(received[0].decode().strip())
+        assert parsed["provider"] == "claude_code"
+        assert parsed["session"]["provider"] == "claude_code"
