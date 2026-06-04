@@ -1,6 +1,7 @@
 """Fast hook entry point — no heavy CLIframework, minimal imports.
 
 Claude Code invokes: python -m notifier.cli.hook {event_type}
+Codex invokes:   python -m notifier.cli.hook {event_type} {provider}
 Reads a single JSON object from stdin, classifies, forwards via TCP.
 """
 import json
@@ -31,6 +32,11 @@ def _safe_read_stdin() -> dict:
     result["transcript_path"] = _extract("transcript_path", "")
     result["notification_type"] = _extract("notification_type", "")
 
+    # Codex-relevant fields for fallback extraction
+    result["hook_event_name"] = _extract("hook_event_name", "")
+    result["tool_name"] = _extract("tool_name", "")
+    result["final_response"] = _extract("final_response", "")
+
     msg = _extract("last_assistant_message", "")
     if msg:
         result["last_assistant_message"] = msg[:200]
@@ -45,20 +51,22 @@ def _safe_read_stdin() -> dict:
 def process_hook_event(
     raw: dict,
     event_type: str,
+    provider: str = "claude_code",
     timeout: int = 5,
     host: str = NOTIFIER_HOST,
     port: int = NOTIFIER_PORT,
 ):
     """Testable event processing: classify, send via TCP."""
-    event = classify_hook_event(raw, event_type)
+    event = classify_hook_event(raw, event_type, provider=provider)
     send_event_or_drop(event, timeout=timeout, host=host, port=port)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python -m notifier.cli.hook <event_type>", file=sys.stderr)
+        print("Usage: python -m notifier.cli.hook <event_type> [provider]", file=sys.stderr)
         sys.exit(1)
 
     event_type = sys.argv[1]
+    provider = sys.argv[2] if len(sys.argv) >= 3 else "claude_code"
     raw = _safe_read_stdin()
-    process_hook_event(raw, event_type)
+    process_hook_event(raw, event_type, provider=provider)

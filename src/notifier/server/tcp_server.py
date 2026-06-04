@@ -12,16 +12,18 @@ PORT = 47921
 
 @dataclass
 class SessionRecord:
-    """Tracks a Claude Code session in the registry.
+    """Tracks a notifier session in the registry.
 
     Per D-06: Created on first event from this session, stores timestamps.
     No expiry in Phase 1 -- lifecycle management deferred to Phase 4.
+    Per D-03/D-04: Provider-aware composite key.
     """
     session_id: str
     cwd: str
     project_name: str
-    first_seen: str
-    last_seen: str
+    provider: str = "claude_code"
+    first_seen: str = ""
+    last_seen: str = ""
 
 
 class NotifierServer:
@@ -36,13 +38,14 @@ class NotifierServer:
     def __init__(self):
         self.session_registry: Dict[str, SessionRecord] = {}
 
-    def _registry_key(self, session_id: str, cwd: str) -> str:
-        """Generate composite key for session registry per D-05."""
-        return f"{session_id}||{cwd}"
+    def _registry_key(self, provider: str, session_id: str, cwd: str) -> str:
+        """Generate composite key for session registry per D-04 (provider-aware)."""
+        return f"{provider}||{session_id}||{cwd}"
 
     def _update_session(self, event: NotifierEvent) -> None:
         """Add or update a session record in the registry."""
-        key = self._registry_key(event.session.session_id, event.session.cwd)
+        provider_value = event.session.provider.value if hasattr(event.session.provider, 'value') else event.session.provider
+        key = self._registry_key(provider_value, event.session.session_id, event.session.cwd)
         now = datetime.now(timezone.utc).isoformat()
         if key in self.session_registry:
             self.session_registry[key].last_seen = now
@@ -51,6 +54,7 @@ class NotifierServer:
                 session_id=event.session.session_id,
                 cwd=event.session.cwd,
                 project_name=event.session.project_name,
+                provider=provider_value,
                 first_seen=now,
                 last_seen=now,
             )
@@ -64,18 +68,28 @@ class NotifierServer:
             if data:
                 payload = json.loads(data.decode().strip())
                 # Reconstruct event from dict — convert category string back to EventCategory enum
-                from notifier.core.events import EventCategory, SessionInfo
+                from notifier.core.events import EventCategory, SessionInfo, Provider
                 cat_value = payload.get("category", "")
                 try:
                     category = EventCategory(cat_value)
                 except ValueError:
                     category = EventCategory.ERROR
 
+                # Reconstruct provider from payload (top-level, then nested session, then default)
+                provider_str = payload.get("provider", "")
                 session_data = payload.get("session", {})
+                if not provider_str:
+                    provider_str = session_data.get("provider", "claude_code")
+                try:
+                    provider = Provider(provider_str)
+                except ValueError:
+                    provider = Provider.CLAUDE_CODE
+
                 session = SessionInfo(
                     session_id=session_data.get("session_id", ""),
                     cwd=session_data.get("cwd", ""),
                     project_name=session_data.get("project_name", ""),
+                    provider=provider,
                 )
                 event = NotifierEvent(
                     category=category,
@@ -84,6 +98,7 @@ class NotifierServer:
                     timestamp=payload.get("timestamp", ""),
                     raw_payload=payload.get("raw_payload", {}),
                     message=payload.get("message"),
+                    provider=provider,
                 )
                 self._update_session(event)
                 logging.info(
