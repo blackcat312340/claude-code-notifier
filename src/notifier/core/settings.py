@@ -10,6 +10,10 @@ SETTINGS_FILE = Path.home() / ".claude" / "settings.json"
 # Notifier ownership tracking file (per D-09: separate from Claude settings)
 NOTIFIER_OWNERSHIP_FILE = Path.home() / ".claude" / ".notifier-ownership.json"
 
+# Codex settings file paths (per D-15: user-level install)
+CODEX_HOOKS_FILE = Path.home() / ".codex" / "hooks.json"
+CODEX_OWNERSHIP_FILE = Path.home() / ".codex" / ".notifier-ownership.json"
+
 def _build_hook_entries():
     """Build hook entries using the current Python executable absolute path.
 
@@ -77,6 +81,64 @@ OWNERSHIP_MARKER = {
     "installed_at": None,  # filled at install time
     "hook_event_types": ["SessionStart", "Notification", "Stop"],
     "matchers": {"Notification": ["permission_prompt", "idle_prompt"]},
+}
+
+
+def _build_codex_hook_entries():
+    """Build Codex hook entries using the current Python executable absolute path.
+
+    Codex hooks use top-level event names as keys and invoke the
+    provider-aware CLI so the hook command passes provider=codex.
+    Event coverage reflects official Codex lifecycle hooks:
+    SessionStart, PermissionRequest, and Stop.
+    """
+    import sys
+    python = sys.executable
+    return {
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook SessionStart codex',
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+        "PermissionRequest": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook PermissionRequest codex',
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook Stop codex',
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+    }
+
+
+# Codex hook entries built at import time with the current Python executable.
+CODEX_HOOK_ENTRIES: Dict[str, Any] = _build_codex_hook_entries()
+
+CODEX_OWNERSHIP_MARKER = {
+    "tool": "claude-code-notifier",
+    "version": "0.1.0",
+    "installed_at": None,  # filled at install time
+    "hook_event_types": ["SessionStart", "PermissionRequest", "Stop"],
 }
 
 
@@ -171,6 +233,65 @@ def install_hooks(
     logging.info(
         "Notifier hooks installed into %s (ownership tracked in %s)",
         s_path,
+        o_path,
+    )
+    return True
+
+
+def install_codex_hooks(
+    hooks_path: Optional[Path] = None,
+    ownership_path: Optional[Path] = None,
+) -> bool:
+    """Non-destructively install notifier-owned Codex hooks.
+
+    Per D-15: Installs at user level so all local Codex projects are monitored.
+    Per D-16: Manages only notifier-owned hook entries and preserves unrelated
+    user Codex hooks and settings.
+    Per D-18: Uninstall is not implemented in this phase.
+
+    Idempotent: running twice produces the same result without duplication.
+
+    Args:
+        hooks_path: Path to Codex hooks.json (default: ~/.codex/hooks.json).
+        ownership_path: Path to ownership file (default: ~/.codex/.notifier-ownership.json).
+
+    Returns:
+        True if hooks were installed successfully.
+    """
+    h_path = hooks_path or CODEX_HOOKS_FILE
+    o_path = ownership_path or CODEX_OWNERSHIP_FILE
+
+    # Step 1: Read existing Codex hooks
+    existing = _read_json(h_path)
+
+    # Step 2: Strip notifier-owned hook entries for idempotency.
+    # Codex hooks are keyed by event name; each key holds a list of entries
+    # where each entry has a "hooks" sub-list of hook defs.
+    for event_type in list(existing.keys()):
+        entries = existing[event_type]
+        if isinstance(entries, list):
+            existing[event_type] = [
+                e for e in entries if not _is_notifier_entry(e)
+            ]
+        # Clean up empty event type keys
+        if not existing[event_type]:
+            del existing[event_type]
+
+    # Step 3: Deep-merge fresh Codex hook entries (ADDITIVE preserves unrelated)
+    merge(existing, CODEX_HOOK_ENTRIES, strategy=Strategy.ADDITIVE)
+
+    # Step 4: Write back the full Codex hooks file
+    _write_json(h_path, existing)
+
+    # Step 5: Write Codex ownership tracking file
+    import datetime
+    ownership = dict(CODEX_OWNERSHIP_MARKER)
+    ownership["installed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    _write_json(o_path, ownership)
+
+    logging.info(
+        "Codex notifier hooks installed into %s (ownership tracked in %s)",
+        h_path,
         o_path,
     )
     return True

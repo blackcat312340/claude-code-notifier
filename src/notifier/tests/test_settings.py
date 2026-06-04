@@ -5,6 +5,9 @@ from pathlib import Path
 from notifier.core.settings import (
     install_hooks,
     HOOK_ENTRIES,
+    CODEX_HOOK_ENTRIES,
+    CODEX_HOOKS_FILE,
+    CODEX_OWNERSHIP_FILE,
     NOTIFIER_OWNERSHIP_FILE,
 )
 
@@ -58,6 +61,87 @@ class TestHookEntriesStructure:
                     assert hook.get("type") == "command", (
                         f"{event_type} entry has wrong type"
                     )
+
+
+class TestCodexHookEntriesStructure:
+    """D-15: Verify Codex hook config entries for 3 event types."""
+
+    def test_has_session_start(self):
+        assert "SessionStart" in CODEX_HOOK_ENTRIES
+
+    def test_has_permission_request(self):
+        assert "PermissionRequest" in CODEX_HOOK_ENTRIES
+
+    def test_has_stop(self):
+        assert "Stop" in CODEX_HOOK_ENTRIES
+
+    def test_all_entries_have_timeout(self):
+        """Every Codex hook entry specifies a timeout."""
+        for event_type, entries in CODEX_HOOK_ENTRIES.items():
+            for entry in entries:
+                hooks = entry.get("hooks", [])
+                for hook in hooks:
+                    assert "timeout" in hook, f"{event_type} entry missing timeout"
+
+    def test_all_entries_use_command_type(self):
+        """Every Codex hook entry uses type: command."""
+        for event_type, entries in CODEX_HOOK_ENTRIES.items():
+            for entry in entries:
+                hooks = entry.get("hooks", [])
+                for hook in hooks:
+                    assert hook.get("type") == "command", (
+                        f"{event_type} entry has wrong type"
+                    )
+
+    def test_all_commands_reference_notifier_cli_hook(self):
+        """Every Codex hook command references notifier.cli.hook."""
+        for event_type, entries in CODEX_HOOK_ENTRIES.items():
+            for entry in entries:
+                hooks = entry.get("hooks", [])
+                for hook in hooks:
+                    cmd = hook.get("command", "")
+                    assert "notifier.cli.hook" in cmd, (
+                        f"{event_type} command missing notifier.cli.hook reference"
+                    )
+
+    def test_all_commands_pass_codex_provider(self):
+        """Every Codex hook command passes provider argument codex."""
+        for event_type, entries in CODEX_HOOK_ENTRIES.items():
+            for entry in entries:
+                hooks = entry.get("hooks", [])
+                for hook in hooks:
+                    cmd = hook.get("command", "")
+                    assert " codex" in cmd, (
+                        f"{event_type} command missing 'codex' provider argument: {cmd}"
+                    )
+
+    def test_session_start_has_no_matcher(self):
+        """SessionStart is unconditional -- no matcher field."""
+        entries = CODEX_HOOK_ENTRIES["SessionStart"]
+        assert len(entries) == 1
+        assert "matcher" not in entries[0]
+
+    def test_permission_request_has_no_matcher(self):
+        """PermissionRequest is unconditional -- no matcher field."""
+        entries = CODEX_HOOK_ENTRIES["PermissionRequest"]
+        assert len(entries) == 1
+        assert "matcher" not in entries[0]
+
+    def test_stop_has_no_matcher(self):
+        """Stop is unconditional -- no matcher field."""
+        entries = CODEX_HOOK_ENTRIES["Stop"]
+        assert len(entries) == 1
+        assert "matcher" not in entries[0]
+
+    def test_codex_hooks_file_path(self):
+        """Codex hooks file defaults under ~/.codex/hooks.json."""
+        assert str(CODEX_HOOKS_FILE).endswith("hooks.json")
+        assert ".codex" in str(CODEX_HOOKS_FILE)
+
+    def test_codex_ownership_file_path(self):
+        """Codex ownership file defaults under ~/.codex/.notifier-ownership.json."""
+        assert str(CODEX_OWNERSHIP_FILE).endswith(".notifier-ownership.json")
+        assert ".codex" in str(CODEX_OWNERSHIP_FILE)
 
 
 class TestInstallHooks:
@@ -179,3 +263,163 @@ class TestInstallHooks:
         assert result is True
         parsed = json.loads(settings_path.read_text())
         assert "hooks" in parsed
+
+
+class TestInstallCodexHooks:
+    """D-15/D-16/D-18: Non-destructive, idempotent Codex hook installation."""
+
+    def test_creates_new_hooks_file_if_missing(self, temp_dir):
+        """If Codex hooks.json doesn't exist, it is created."""
+        hooks_path = temp_dir / "hooks.json"
+        ownership_path = temp_dir / "ownership.json"
+
+        from notifier.core.settings import install_codex_hooks
+        result = install_codex_hooks(
+            hooks_path=hooks_path,
+            ownership_path=ownership_path,
+        )
+
+        assert result is True
+        assert hooks_path.exists()
+        parsed = json.loads(hooks_path.read_text())
+        assert "SessionStart" in parsed
+
+    def test_adds_all_codex_event_types(self, temp_dir):
+        """All 3 Codex event types are present after install."""
+        hooks_path = temp_dir / "hooks.json"
+        hooks_path.write_text(json.dumps({}))
+
+        ownership_path = temp_dir / "ownership.json"
+        from notifier.core.settings import install_codex_hooks
+        install_codex_hooks(hooks_path=hooks_path, ownership_path=ownership_path)
+
+        parsed = json.loads(hooks_path.read_text())
+        assert "SessionStart" in parsed
+        assert "PermissionRequest" in parsed
+        assert "Stop" in parsed
+
+    def test_preserves_unrelated_codex_settings(self, temp_dir):
+        """Unrelated top-level settings survive the merge."""
+        hooks_path = temp_dir / "hooks.json"
+        original = {
+            "theme": "dark",
+            "model": "gpt-5",
+            "something_else": {"nested": True},
+        }
+        hooks_path.write_text(json.dumps(original))
+
+        ownership_path = temp_dir / "ownership.json"
+        from notifier.core.settings import install_codex_hooks
+        install_codex_hooks(hooks_path=hooks_path, ownership_path=ownership_path)
+
+        parsed = json.loads(hooks_path.read_text())
+        assert parsed["theme"] == "dark"
+        assert parsed["model"] == "gpt-5"
+        assert parsed["something_else"]["nested"] is True
+
+    def test_preserves_unrelated_codex_hook_entries(self, temp_dir):
+        """Existing Codex hooks from other tools are preserved."""
+        hooks_path = temp_dir / "hooks.json"
+        original = {
+            "PrePush": [
+                {"hooks": [{"type": "command", "command": "lint-check"}]}
+            ]
+        }
+        hooks_path.write_text(json.dumps(original))
+
+        ownership_path = temp_dir / "ownership.json"
+        from notifier.core.settings import install_codex_hooks
+        install_codex_hooks(hooks_path=hooks_path, ownership_path=ownership_path)
+
+        parsed = json.loads(hooks_path.read_text())
+        assert "PrePush" in parsed, "Other tool's Codex hooks were deleted"
+        assert "SessionStart" in parsed, "Notifier Codex hooks were not added"
+        # Unrelated entry is intact
+        assert parsed["PrePush"][0]["hooks"][0]["command"] == "lint-check"
+
+    def test_creates_ownership_file(self, temp_dir):
+        """Codex ownership file is created with correct marker."""
+        hooks_path = temp_dir / "hooks.json"
+        hooks_path.write_text(json.dumps({}))
+
+        ownership_path = temp_dir / "ownership.json"
+        from notifier.core.settings import install_codex_hooks
+        install_codex_hooks(hooks_path=hooks_path, ownership_path=ownership_path)
+
+        assert ownership_path.exists()
+        ownership = json.loads(ownership_path.read_text())
+        assert ownership["tool"] == "claude-code-notifier"
+        assert ownership["version"] == "0.1.0"
+        assert "installed_at" in ownership
+        assert "SessionStart" in ownership["hook_event_types"]
+        assert "PermissionRequest" in ownership["hook_event_types"]
+        assert "Stop" in ownership["hook_event_types"]
+
+    def test_idempotent_codex_install(self, temp_dir):
+        """Running install twice produces the same result (no duplicate entries)."""
+        hooks_path = temp_dir / "hooks.json"
+        hooks_path.write_text(json.dumps({"theme": "light"}))
+
+        ownership_path = temp_dir / "ownership.json"
+        from notifier.core.settings import install_codex_hooks
+        install_codex_hooks(hooks_path=hooks_path, ownership_path=ownership_path)
+        install_codex_hooks(hooks_path=hooks_path, ownership_path=ownership_path)
+
+        parsed = json.loads(hooks_path.read_text())
+        assert parsed["theme"] == "light"
+        assert len(parsed["SessionStart"]) == 1
+        assert len(parsed["PermissionRequest"]) == 1
+        assert len(parsed["Stop"]) == 1
+
+    def test_replaces_notifier_owned_codex_entries(self, temp_dir):
+        """Existing notifier-owned Codex entries are replaced rather than duplicated."""
+        hooks_path = temp_dir / "hooks.json"
+        stale = {
+            "SessionStart": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "/old/venv/bin/python -m notifier.cli.hook SessionStart codex",
+                        }
+                    ]
+                }
+            ],
+            "Stop": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "/old/venv/bin/python -m notifier.cli.hook Stop codex",
+                        }
+                    ]
+                }
+            ],
+        }
+        hooks_path.write_text(json.dumps(stale))
+
+        ownership_path = temp_dir / "ownership.json"
+        from notifier.core.settings import install_codex_hooks
+        install_codex_hooks(hooks_path=hooks_path, ownership_path=ownership_path)
+
+        parsed = json.loads(hooks_path.read_text())
+        # Old entries should be gone; fresh ones should have the current CLI command
+        for event in ["SessionStart", "Stop"]:
+            cmd = parsed[event][0]["hooks"][0]["command"]
+            assert "notifier.cli.hook" in cmd
+
+    def test_handles_corrupt_codex_json_gracefully(self, temp_dir):
+        """If Codex hooks.json has invalid JSON, a fresh install succeeds."""
+        hooks_path = temp_dir / "hooks.json"
+        hooks_path.write_text("this is not json")
+
+        ownership_path = temp_dir / "ownership.json"
+        from notifier.core.settings import install_codex_hooks
+        result = install_codex_hooks(
+            hooks_path=hooks_path,
+            ownership_path=ownership_path,
+        )
+
+        assert result is True
+        parsed = json.loads(hooks_path.read_text())
+        assert "SessionStart" in parsed
