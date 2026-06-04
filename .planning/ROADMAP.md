@@ -54,19 +54,19 @@ Plans:
 **Mode:** mvp
 **Requirements:** SESS-03, TRAY-02, TRAY-04
 **UI hint:** yes
-**Success Criteria**:
-
-1. Recent events are stored locally with timestamps and session/project context
-2. The tray surface exposes a recent-event list or equivalent inspection view
-3. A developer can understand why a notification fired without reading raw hook payloads
-4. A developer can navigate from the tray surface back to the relevant project or session context
-
 **Plans:** 1 plan
 
 Plans:
 **Wave 1**
 
 - [x] 03-01-PLAN.md -- Event History + Trust Surface (SESS-03, TRAY-02, TRAY-04)
+
+**Success Criteria**:
+
+1. Recent events are stored locally with timestamps and session/project context
+2. The tray surface exposes a recent-event list or equivalent inspection view
+3. A developer can understand why a notification fired without reading raw hook payloads
+4. A developer can navigate from the tray surface back to the relevant project or session context
 
 ### Phase 03.1: Codex Hook Support + Chinese Localization (INSERTED)
 
@@ -98,11 +98,22 @@ Plans:
 **Mode:** mvp
 **Requirements:** ANOM-01, ANOM-02, ANOM-03
 **UI hint:** yes
+**Plans:** 2 plans in 2 waves
+
 **Success Criteria**:
 
 1. The notifier can track session heartbeats or last-seen activity well enough to detect 5-minute inactivity
 2. Inactivity reminders avoid spamming duplicate alerts for the same session
 3. At least one error-like abnormal state path produces a user-facing reminder
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md -- Inactivity Detection (ANOM-01, ANOM-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md -- ERROR Flood Detection (ANOM-02, ANOM-03)
 
 ### Phase 5: Safe Hook Lifecycle
 
@@ -150,4 +161,4 @@ Plans:
 - This phase should leave the tool easy to adopt and easy to back out
 
 ---
-*Last updated: 2026-05-30 after Phase 1 completion*
+*Last updated: 2026-06-04 after Phase 4 planning*
