@@ -1,35 +1,17 @@
 """Dynamic tray menu builder — reads event history, builds pystray menu."""
-from datetime import datetime, timezone
 from notifier.tray.detail import show_detail
+from notifier.core.text import event_menu_label, relative_time_cn
 
 
 def _format_event(event, index):
     """Format one event as a menu item label.
 
-    Returns (label, event) tuple. Label format: "project - category (N mins ago)"
+    Returns (label, event) tuple.
+    Per D-02, D-11: provider source visible, Chinese-first labels.
+    Format: "{provider} - {category} - {cn_label} ({relative_time})"
     """
-    project = event.session.project_name
-    cat = event.category.value if hasattr(event.category, 'value') else str(event.category)
-
-    # Relative time
-    try:
-        ts = datetime.fromisoformat(event.timestamp)
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        delta = datetime.now(timezone.utc) - ts
-        mins = int(delta.total_seconds() / 60)
-        if mins < 1:
-            ago = "just now"
-        elif mins == 1:
-            ago = "1 min ago"
-        else:
-            ago = f"{mins} mins ago"
-    except Exception:
-        ago = ""
-
-    label = f"{project} - {cat}"
-    if ago:
-        label += f" ({ago})"
+    relative_time = relative_time_cn(event.timestamp)
+    label = event_menu_label(event, relative_time=relative_time)
     return label, event
 
 
@@ -38,6 +20,7 @@ def build_menu(tray):
 
     Per D-03: 5 most recent events at top, separator, then Exit.
     Per D-04: Called on every right-click — always shows current state.
+    Per D-11, D-12: Chinese-first labels (暂无事件, 退出).
 
     Args:
         tray: NotifierTray instance with event_history, shutdown()
@@ -62,13 +45,13 @@ def build_menu(tray):
         items.append(pystray.Menu.SEPARATOR)
     else:
         items.append(pystray.MenuItem(
-            "No events yet", lambda icon, item: None,
+            "暂无事件", lambda icon, item: None,
         ))
         items.append(pystray.Menu.SEPARATOR)
 
     items.append(
         pystray.MenuItem(
-            "Exit",
+            "退出",
             lambda icon, item: tray.shutdown(icon),
         )
     )

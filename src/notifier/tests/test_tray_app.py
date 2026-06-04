@@ -44,10 +44,15 @@ class TestNotifierTray:
         text = tray._tooltip_text()
         assert "Claude Code Notifier" in text
 
+    def test_tooltip_shows_chinese_monitoring(self):
+        tray = NotifierTray()
+        text = tray._tooltip_text()
+        assert "监控中" in text
+
     def test_tooltip_shows_zero_sessions(self):
         tray = NotifierTray()
         text = tray._tooltip_text()
-        assert "0" in text or "Monitoring" in text
+        assert "0" in text or "监控中" in text
 
     def test_tooltip_shows_session_count(self):
         tray = NotifierTray()
@@ -100,7 +105,7 @@ class TestNotifierTray:
         # Tooltip should be updated with session count
         assert tray._icon.title is not None
         assert "1" in tray._icon.title
-        assert "Monitoring" in tray._icon.title
+        assert "监控中" in tray._icon.title
 
     def test_event_history_initialized(self):
         tray = NotifierTray()
