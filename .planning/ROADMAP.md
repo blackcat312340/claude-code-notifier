@@ -73,12 +73,12 @@ Plans:
 **Goal:** Add first-class Codex hook support and Chinese-first user-facing copy before abnormal-state detection.
 **Requirements**: TBD
 **Depends on:** Phase 3
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03.1-01-PLAN.md -- Provider-Aware Event Backbone
+- [x] 03.1-01-PLAN.md -- Provider-Aware Event Backbone
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
