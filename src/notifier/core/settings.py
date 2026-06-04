@@ -236,3 +236,62 @@ def install_hooks(
         o_path,
     )
     return True
+
+
+def install_codex_hooks(
+    hooks_path: Optional[Path] = None,
+    ownership_path: Optional[Path] = None,
+) -> bool:
+    """Non-destructively install notifier-owned Codex hooks.
+
+    Per D-15: Installs at user level so all local Codex projects are monitored.
+    Per D-16: Manages only notifier-owned hook entries and preserves unrelated
+    user Codex hooks and settings.
+    Per D-18: Uninstall is not implemented in this phase.
+
+    Idempotent: running twice produces the same result without duplication.
+
+    Args:
+        hooks_path: Path to Codex hooks.json (default: ~/.codex/hooks.json).
+        ownership_path: Path to ownership file (default: ~/.codex/.notifier-ownership.json).
+
+    Returns:
+        True if hooks were installed successfully.
+    """
+    h_path = hooks_path or CODEX_HOOKS_FILE
+    o_path = ownership_path or CODEX_OWNERSHIP_FILE
+
+    # Step 1: Read existing Codex hooks
+    existing = _read_json(h_path)
+
+    # Step 2: Strip notifier-owned hook entries for idempotency.
+    # Codex hooks are keyed by event name; each key holds a list of entries
+    # where each entry has a "hooks" sub-list of hook defs.
+    for event_type in list(existing.keys()):
+        entries = existing[event_type]
+        if isinstance(entries, list):
+            existing[event_type] = [
+                e for e in entries if not _is_notifier_entry(e)
+            ]
+        # Clean up empty event type keys
+        if not existing[event_type]:
+            del existing[event_type]
+
+    # Step 3: Deep-merge fresh Codex hook entries (ADDITIVE preserves unrelated)
+    merge(existing, CODEX_HOOK_ENTRIES, strategy=Strategy.ADDITIVE)
+
+    # Step 4: Write back the full Codex hooks file
+    _write_json(h_path, existing)
+
+    # Step 5: Write Codex ownership tracking file
+    import datetime
+    ownership = dict(CODEX_OWNERSHIP_MARKER)
+    ownership["installed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    _write_json(o_path, ownership)
+
+    logging.info(
+        "Codex notifier hooks installed into %s (ownership tracked in %s)",
+        h_path,
+        o_path,
+    )
+    return True
