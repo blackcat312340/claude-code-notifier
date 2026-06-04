@@ -1,6 +1,18 @@
 """Tests for event classification (covers HOOK-03 classification behavior)."""
 import pytest
-from notifier.core.events import EventCategory, SessionInfo, NotifierEvent, classify_hook_event
+from notifier.core.events import (
+    EventCategory, Provider, SessionInfo, NotifierEvent, classify_hook_event,
+)
+
+
+class TestProvider:
+    """Verify Provider enum exists with correct values."""
+
+    def test_claude_code_value(self):
+        assert Provider.CLAUDE_CODE.value == "claude_code"
+
+    def test_codex_value(self):
+        assert Provider.CODEX.value == "codex"
 
 
 class TestEventCategory:
@@ -83,9 +95,54 @@ class TestClassifyHookEvent:
         assert "raw_payload" in d
         assert d["hook_event_name"] == "Notification"
 
+    def test_to_dict_includes_provider(self):
+        """to_dict() includes top-level provider and nested session.provider."""
+        raw = {"notification_type": "permission_prompt", "session_id": "s1", "cwd": "/t"}
+        event = classify_hook_event(raw, "Notification")
+        d = event.to_dict()
+        assert "provider" in d
+        assert d["provider"] == "claude_code"
+        assert "provider" in d["session"]
+        assert d["session"]["provider"] == "claude_code"
+
     def test_session_info_construction(self):
-        """SessionInfo stores session_id, cwd, project_name."""
+        """SessionInfo stores session_id, cwd, project_name, and provider."""
         si = SessionInfo(session_id="abc", cwd="/projects/my-app", project_name="my-app")
         assert si.session_id == "abc"
         assert si.cwd == "/projects/my-app"
         assert si.project_name == "my-app"
+        assert si.provider == Provider.CLAUDE_CODE
+
+    def test_session_info_default_provider(self):
+        """Legacy SessionInfo(...) without provider defaults to CLAUDE_CODE."""
+        si = SessionInfo(session_id="abc", cwd="/projects/my-app", project_name="my-app")
+        assert si.provider == Provider.CLAUDE_CODE
+        assert si.provider.value == "claude_code"
+
+    def test_classify_with_explicit_codex_provider(self):
+        """classify_hook_event with provider=Provider.CODEX propagates to event."""
+        raw = {"session_id": "s1", "cwd": "/t", "stop_reason": "done"}
+        event = classify_hook_event(raw, "Stop", provider=Provider.CODEX)
+        assert event.provider == Provider.CODEX
+        assert event.session.provider == Provider.CODEX
+
+    def test_classify_with_codex_provider_string(self):
+        """classify_hook_event with provider='codex' string normalizes to Provider.CODEX."""
+        raw = {"session_id": "s1", "cwd": "/t", "stop_reason": "done"}
+        event = classify_hook_event(raw, "Stop", provider="codex")
+        assert event.provider == Provider.CODEX
+        assert event.session.provider == Provider.CODEX
+
+    def test_classify_with_invalid_provider_defaults_claude_code(self):
+        """Invalid provider string defaults to CLAUDE_CODE for safety."""
+        raw = {"session_id": "s1", "cwd": "/t", "stop_reason": "done"}
+        event = classify_hook_event(raw, "Stop", provider="nonexistent")
+        assert event.provider == Provider.CLAUDE_CODE
+        assert event.session.provider == Provider.CLAUDE_CODE
+
+    def test_classify_defaults_claude_code_provider(self):
+        """Legacy classify_hook_event without provider defaults to CLAUDE_CODE."""
+        raw = {"session_id": "s1", "cwd": "/t", "stop_reason": "done"}
+        event = classify_hook_event(raw, "Stop")
+        assert event.provider == Provider.CLAUDE_CODE
+        assert event.session.provider == Provider.CLAUDE_CODE

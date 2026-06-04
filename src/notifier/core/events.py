@@ -1,7 +1,12 @@
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from datetime import datetime, timezone
+
+
+class Provider(str, Enum):
+    CLAUDE_CODE = "claude_code"
+    CODEX = "codex"
 
 
 class EventCategory(str, Enum):
@@ -16,6 +21,7 @@ class SessionInfo:
     session_id: str
     cwd: str
     project_name: str  # leaf directory from cwd, per D-04
+    provider: Provider = Provider.CLAUDE_CODE
 
 
 @dataclass
@@ -28,22 +34,35 @@ class NotifierEvent:
     )
     raw_payload: Dict[str, Any] = field(default_factory=dict)
     message: Optional[str] = None
+    provider: Provider = Provider.CLAUDE_CODE
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
-def classify_hook_event(raw: Dict[str, Any], event_type: str) -> NotifierEvent:
+def classify_hook_event(
+    raw: Dict[str, Any],
+    event_type: str,
+    provider: Union[Provider, str] = Provider.CLAUDE_CODE,
+) -> NotifierEvent:
     """Classify a raw hook payload into a NotifierEvent.
 
     Per D-01: produces 4 categories (permission, idle, done, error).
     Per D-03: Notification events classified by notification_type field.
     Per critical research finding: No standalone Idle hook event --
       idle maps from Notification + idle_prompt.
+    Provider drives provider-specific classification and propagates to
+    SessionInfo and NotifierEvent.
     """
     from notifier.core.session import extract_session
 
-    session = extract_session(raw)
+    if isinstance(provider, str):
+        try:
+            provider = Provider(provider)
+        except ValueError:
+            provider = Provider.CLAUDE_CODE
+
+    session = extract_session(raw, provider=provider)
     category, message = _classify(event_type, raw)
 
     return NotifierEvent(
@@ -52,6 +71,7 @@ def classify_hook_event(raw: Dict[str, Any], event_type: str) -> NotifierEvent:
         hook_event_name=event_type,
         raw_payload=raw,
         message=message,
+        provider=provider,
     )
 
 

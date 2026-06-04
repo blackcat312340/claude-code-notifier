@@ -1,6 +1,7 @@
 """Tests for session identity and project name (covers SESS-01, SESS-02)."""
 import pytest
 from notifier.core.session import extract_session, project_name
+from notifier.core.events import Provider
 
 
 class TestProjectName:
@@ -74,3 +75,37 @@ class TestExtractSession:
         assert sa.session_id == sb.session_id  # same id
         assert sa.cwd != sb.cwd  # different directories
         assert sa.project_name != sb.project_name  # different project names
+
+    def test_default_provider_is_claude_code(self):
+        """extract_session without provider defaults to CLAUDE_CODE."""
+        raw = {"session_id": "abc123", "cwd": "D:/code/project"}
+        session = extract_session(raw)
+        assert session.provider == Provider.CLAUDE_CODE
+
+    def test_explicit_provider_codex(self):
+        """extract_session with provider='codex' stores Codex."""
+        raw = {"session_id": "abc123", "cwd": "D:/code/project"}
+        session = extract_session(raw, provider=Provider.CODEX)
+        assert session.provider == Provider.CODEX
+        assert session.provider.value == "codex"
+
+    def test_explicit_provider_string(self):
+        """extract_session with provider='codex' string normalizes to Provider.CODEX."""
+        raw = {"session_id": "abc123", "cwd": "D:/code/project"}
+        session = extract_session(raw, provider="codex")
+        assert session.provider == Provider.CODEX
+
+    def test_invalid_provider_defaults_claude_code(self):
+        """extract_session with invalid provider string defaults to CLAUDE_CODE."""
+        raw = {"session_id": "abc123", "cwd": "D:/code/project"}
+        session = extract_session(raw, provider="garbage")
+        assert session.provider == Provider.CLAUDE_CODE
+
+    def test_provider_preserves_composite_key_behavior(self):
+        """Same (session_id, cwd) with different providers -> different sessions."""
+        raw = {"session_id": "s1", "cwd": "/project-alpha"}
+        session_claude = extract_session(raw, provider=Provider.CLAUDE_CODE)
+        session_codex = extract_session(raw, provider=Provider.CODEX)
+        assert session_claude.session_id == session_codex.session_id
+        assert session_claude.cwd == session_codex.cwd
+        assert session_claude.provider != session_codex.provider
