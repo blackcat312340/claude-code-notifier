@@ -5,6 +5,9 @@ from pathlib import Path
 from notifier.core.settings import (
     install_hooks,
     HOOK_ENTRIES,
+    CODEX_HOOK_ENTRIES,
+    CODEX_HOOKS_FILE,
+    CODEX_OWNERSHIP_FILE,
     NOTIFIER_OWNERSHIP_FILE,
 )
 
@@ -58,6 +61,87 @@ class TestHookEntriesStructure:
                     assert hook.get("type") == "command", (
                         f"{event_type} entry has wrong type"
                     )
+
+
+class TestCodexHookEntriesStructure:
+    """D-15: Verify Codex hook config entries for 3 event types."""
+
+    def test_has_session_start(self):
+        assert "SessionStart" in CODEX_HOOK_ENTRIES
+
+    def test_has_permission_request(self):
+        assert "PermissionRequest" in CODEX_HOOK_ENTRIES
+
+    def test_has_stop(self):
+        assert "Stop" in CODEX_HOOK_ENTRIES
+
+    def test_all_entries_have_timeout(self):
+        """Every Codex hook entry specifies a timeout."""
+        for event_type, entries in CODEX_HOOK_ENTRIES.items():
+            for entry in entries:
+                hooks = entry.get("hooks", [])
+                for hook in hooks:
+                    assert "timeout" in hook, f"{event_type} entry missing timeout"
+
+    def test_all_entries_use_command_type(self):
+        """Every Codex hook entry uses type: command."""
+        for event_type, entries in CODEX_HOOK_ENTRIES.items():
+            for entry in entries:
+                hooks = entry.get("hooks", [])
+                for hook in hooks:
+                    assert hook.get("type") == "command", (
+                        f"{event_type} entry has wrong type"
+                    )
+
+    def test_all_commands_reference_notifier_cli_hook(self):
+        """Every Codex hook command references notifier.cli.hook."""
+        for event_type, entries in CODEX_HOOK_ENTRIES.items():
+            for entry in entries:
+                hooks = entry.get("hooks", [])
+                for hook in hooks:
+                    cmd = hook.get("command", "")
+                    assert "notifier.cli.hook" in cmd, (
+                        f"{event_type} command missing notifier.cli.hook reference"
+                    )
+
+    def test_all_commands_pass_codex_provider(self):
+        """Every Codex hook command passes provider argument codex."""
+        for event_type, entries in CODEX_HOOK_ENTRIES.items():
+            for entry in entries:
+                hooks = entry.get("hooks", [])
+                for hook in hooks:
+                    cmd = hook.get("command", "")
+                    assert " codex" in cmd, (
+                        f"{event_type} command missing 'codex' provider argument: {cmd}"
+                    )
+
+    def test_session_start_has_no_matcher(self):
+        """SessionStart is unconditional -- no matcher field."""
+        entries = CODEX_HOOK_ENTRIES["SessionStart"]
+        assert len(entries) == 1
+        assert "matcher" not in entries[0]
+
+    def test_permission_request_has_no_matcher(self):
+        """PermissionRequest is unconditional -- no matcher field."""
+        entries = CODEX_HOOK_ENTRIES["PermissionRequest"]
+        assert len(entries) == 1
+        assert "matcher" not in entries[0]
+
+    def test_stop_has_no_matcher(self):
+        """Stop is unconditional -- no matcher field."""
+        entries = CODEX_HOOK_ENTRIES["Stop"]
+        assert len(entries) == 1
+        assert "matcher" not in entries[0]
+
+    def test_codex_hooks_file_path(self):
+        """Codex hooks file defaults under ~/.codex/hooks.json."""
+        assert str(CODEX_HOOKS_FILE).endswith("hooks.json")
+        assert ".codex" in str(CODEX_HOOKS_FILE)
+
+    def test_codex_ownership_file_path(self):
+        """Codex ownership file defaults under ~/.codex/.notifier-ownership.json."""
+        assert str(CODEX_OWNERSHIP_FILE).endswith(".notifier-ownership.json")
+        assert ".codex" in str(CODEX_OWNERSHIP_FILE)
 
 
 class TestInstallHooks:

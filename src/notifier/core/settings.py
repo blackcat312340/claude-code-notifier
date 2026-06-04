@@ -10,6 +10,10 @@ SETTINGS_FILE = Path.home() / ".claude" / "settings.json"
 # Notifier ownership tracking file (per D-09: separate from Claude settings)
 NOTIFIER_OWNERSHIP_FILE = Path.home() / ".claude" / ".notifier-ownership.json"
 
+# Codex settings file paths (per D-15: user-level install)
+CODEX_HOOKS_FILE = Path.home() / ".codex" / "hooks.json"
+CODEX_OWNERSHIP_FILE = Path.home() / ".codex" / ".notifier-ownership.json"
+
 def _build_hook_entries():
     """Build hook entries using the current Python executable absolute path.
 
@@ -77,6 +81,64 @@ OWNERSHIP_MARKER = {
     "installed_at": None,  # filled at install time
     "hook_event_types": ["SessionStart", "Notification", "Stop"],
     "matchers": {"Notification": ["permission_prompt", "idle_prompt"]},
+}
+
+
+def _build_codex_hook_entries():
+    """Build Codex hook entries using the current Python executable absolute path.
+
+    Codex hooks use top-level event names as keys and invoke the
+    provider-aware CLI so the hook command passes provider=codex.
+    Event coverage reflects official Codex lifecycle hooks:
+    SessionStart, PermissionRequest, and Stop.
+    """
+    import sys
+    python = sys.executable
+    return {
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook SessionStart codex',
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+        "PermissionRequest": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook PermissionRequest codex',
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f'"{python}" -m notifier.cli.hook Stop codex',
+                        "timeout": 10,
+                    }
+                ]
+            }
+        ],
+    }
+
+
+# Codex hook entries built at import time with the current Python executable.
+CODEX_HOOK_ENTRIES: Dict[str, Any] = _build_codex_hook_entries()
+
+CODEX_OWNERSHIP_MARKER = {
+    "tool": "claude-code-notifier",
+    "version": "0.1.0",
+    "installed_at": None,  # filled at install time
+    "hook_event_types": ["SessionStart", "PermissionRequest", "Stop"],
 }
 
 
