@@ -68,6 +68,16 @@ Plans:
 
 - [x] 03-01-PLAN.md -- Event History + Trust Surface (SESS-03, TRAY-02, TRAY-04)
 
+### Phase 03.1: Codex Hook Support + Chinese Localization (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 3
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
+
 ### Phase 4: Abnormal-State Detection
 
 **Goal:** Extend the notifier beyond direct hook notifications by detecting stalled or abnormal Claude sessions.
