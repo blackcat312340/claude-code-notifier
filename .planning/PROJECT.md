@@ -12,7 +12,10 @@ When Claude Code needs you or finishes waiting for you, you should know immediat
 
 ### Validated
 
-(None yet - ship to validate)
+- Phase 1 (Hook Event Backbone): validated 2026-05-30
+- Phase 2 (First Useful Reminders): validated 2026-05-30
+- Phase 3 (Operator Trust Surface): validated
+- Phase 03.1 (Codex Hook Support + Chinese Localization): validated 2026-06-04 — provider-aware event backbone, Codex hook installation, Chinese-first UI copy
 
 ### Active
 
@@ -78,4 +81,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-29 after initialization*
+*Last updated: 2026-06-04 after Phase 03.1 completion*
