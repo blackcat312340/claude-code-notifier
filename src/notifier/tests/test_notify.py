@@ -2,13 +2,23 @@
 import pytest
 import time
 from unittest.mock import patch, MagicMock
-from notifier.core.events import EventCategory, NotifierEvent, SessionInfo
+from notifier.core.events import (
+    EventCategory, NotifierEvent, SessionInfo, Provider,
+)
 from notifier.core.notify import (
     dispatch_notification,
     NOTIFY_COOLDOWN_S,
     NOTIFY_CATEGORIES,
     _check_cooldown,
     _build_body,
+)
+from notifier.core.text import (
+    provider_label,
+    category_label,
+    notification_title,
+    notification_body,
+    event_menu_label,
+    relative_time_cn,
 )
 
 
@@ -164,3 +174,197 @@ class TestDispatchNotification:
         dispatch_notification(_make_event(EventCategory.IDLE, project_name="beta"))
 
         assert mock_notify_cls.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Task 1: Centralized display text helpers (text.py)
+# ---------------------------------------------------------------------------
+
+
+def _make_event_with_provider(
+    category,
+    project_name="my-project",
+    message=None,
+    provider=Provider.CLAUDE_CODE,
+    hook_event_name="Notification",
+):
+    return NotifierEvent(
+        category=category,
+        session=SessionInfo(
+            session_id="test-s1",
+            cwd=f"/test/{project_name}",
+            project_name=project_name,
+            provider=provider,
+        ),
+        hook_event_name=hook_event_name,
+        message=message,
+        provider=provider,
+    )
+
+
+class TestProviderLabel:
+    """provider_label returns stable, recognizable provider names."""
+
+    def test_claude_code_enum(self):
+        assert provider_label(Provider.CLAUDE_CODE) == "Claude Code"
+
+    def test_codex_enum(self):
+        assert provider_label(Provider.CODEX) == "Codex"
+
+    def test_claude_code_string(self):
+        assert provider_label("claude_code") == "Claude Code"
+
+    def test_codex_string(self):
+        assert provider_label("codex") == "Codex"
+
+    def test_claude_code_with_space_string(self):
+        assert provider_label("claude code") == "Claude Code"
+
+    def test_unknown_provider_degrades_gracefully(self):
+        result = provider_label("unknown_provider")
+        assert "Unknown" in result
+        assert "Provider" in result
+
+    def test_unknown_enum_degrades_gracefully(self):
+        result = provider_label("bogus")
+        assert "Bogus" in result
+
+
+class TestCategoryLabel:
+    """category_label returns concise Chinese labels."""
+
+    def test_permission_cn(self):
+        assert category_label(EventCategory.PERMISSION) == "需要授权"
+
+    def test_idle_cn(self):
+        assert category_label(EventCategory.IDLE) == "等待输入"
+
+    def test_done_cn(self):
+        assert category_label(EventCategory.DONE) == "任务已完成"
+
+    def test_error_cn(self):
+        assert category_label(EventCategory.ERROR) == "需要检查"
+
+    def test_string_category(self):
+        assert category_label("permission") == "需要授权"
+
+    def test_unknown_category_degrades(self):
+        result = category_label("bogus_category")
+        assert result == "bogus_category"
+
+
+class TestNotificationTitle:
+    """notification_title includes provider source and project name."""
+
+    def test_claude_code_title(self):
+        event = _make_event_with_provider(
+            EventCategory.DONE, project_name="my-project",
+            provider=Provider.CLAUDE_CODE,
+        )
+        title = notification_title(event)
+        assert title == "Claude Code - my-project"
+
+    def test_codex_title(self):
+        event = _make_event_with_provider(
+            EventCategory.PERMISSION, project_name="notifier",
+            provider=Provider.CODEX,
+        )
+        title = notification_title(event)
+        assert title == "Codex - notifier"
+
+
+class TestNotificationBody:
+    """notification_body uses Chinese-first copy with optional detail."""
+
+    def test_permission_body_with_message(self):
+        event = _make_event_with_provider(
+            EventCategory.PERMISSION, message="Bash",
+        )
+        body = notification_body(event)
+        assert body == "需要授权 - Bash"
+
+    def test_permission_body_no_message(self):
+        event = _make_event_with_provider(
+            EventCategory.PERMISSION, message=None,
+        )
+        body = notification_body(event)
+        assert body == "需要授权"
+
+    def test_idle_body_with_message(self):
+        event = _make_event_with_provider(
+            EventCategory.IDLE, message="Awaiting next instruction",
+        )
+        body = notification_body(event)
+        assert "等待输入" in body
+        assert "Awaiting next instruction" in body
+
+    def test_done_body(self):
+        event = _make_event_with_provider(
+            EventCategory.DONE, message="Build passed",
+        )
+        body = notification_body(event)
+        assert "任务已完成 - Build passed" == body
+
+    def test_error_body(self):
+        event = _make_event_with_provider(
+            EventCategory.ERROR, message="Unknown event type: Foo",
+        )
+        body = notification_body(event)
+        assert "需要检查 - Unknown event type: Foo" == body
+
+
+class TestEventMenuLabel:
+    """event_menu_label combines provider, category value, Chinese label, and time."""
+
+    def test_codex_permission_label(self):
+        event = _make_event_with_provider(
+            EventCategory.PERMISSION, provider=Provider.CODEX,
+        )
+        label = event_menu_label(event)
+        assert label == "Codex - permission - 需要授权"
+
+    def test_label_with_relative_time(self):
+        event = _make_event_with_provider(
+            EventCategory.DONE, provider=Provider.CLAUDE_CODE,
+        )
+        label = event_menu_label(event, relative_time="刚刚")
+        assert label == "Claude Code - done - 任务已完成 (刚刚)"
+
+    def test_label_with_minutes_time(self):
+        event = _make_event_with_provider(
+            EventCategory.IDLE, provider=Provider.CODEX,
+        )
+        label = event_menu_label(event, relative_time="5 分钟前")
+        assert label == "Codex - idle - 等待输入 (5 分钟前)"
+
+
+class TestRelativeTimeCN:
+    """relative_time_cn returns concise Chinese relative time."""
+
+    def test_just_now_for_now(self):
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
+        result = relative_time_cn(ts)
+        assert result == "刚刚"
+
+    def test_one_minute_ago(self):
+        from datetime import datetime, timezone, timedelta
+        ts = (datetime.now(timezone.utc) - timedelta(seconds=65)).isoformat()
+        result = relative_time_cn(ts)
+        assert result == "1 分钟前"
+
+    def test_minutes_ago(self):
+        from datetime import datetime, timezone, timedelta
+        ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
+        result = relative_time_cn(ts)
+        assert "分钟前" in result
+        assert int(result.split()[0]) >= 4
+
+    def test_naive_timestamp(self):
+        from datetime import datetime, timedelta
+        ts = (datetime.utcnow() - timedelta(seconds=65)).isoformat()
+        result = relative_time_cn(ts)
+        assert "分钟前" in result
+
+    def test_bad_timestamp_returns_empty(self):
+        assert relative_time_cn("not-a-timestamp") == ""
