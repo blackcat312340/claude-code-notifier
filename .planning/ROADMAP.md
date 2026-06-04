@@ -73,7 +73,7 @@ Plans:
 **Goal:** Add first-class Codex hook support and Chinese-first user-facing copy before abnormal-state detection.
 **Requirements**: TBD
 **Depends on:** Phase 3
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -82,8 +82,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03.1-02-PLAN.md -- Codex Hook Installation + Unified Config CLI
-- [ ] 03.1-03-PLAN.md -- Chinese Notifications, Tray, and Detail Provider Display
+- [x] 03.1-02-PLAN.md -- Codex Hook Installation + Unified Config CLI
+- [x] 03.1-03-PLAN.md -- Chinese Notifications, Tray, and Detail Provider Display
 
 **Success Criteria**:
 
