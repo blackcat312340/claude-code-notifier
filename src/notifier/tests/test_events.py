@@ -146,3 +146,93 @@ class TestClassifyHookEvent:
         event = classify_hook_event(raw, "Stop")
         assert event.provider == Provider.CLAUDE_CODE
         assert event.session.provider == Provider.CLAUDE_CODE
+
+
+class TestCodexClassification:
+    """D-06 through D-10: Codex-specific event classification."""
+
+    def test_codex_permission_request_with_message(self):
+        """Codex PermissionRequest -> PERMISSION with message field."""
+        raw = {"session_id": "s1", "cwd": "/t", "message": "Codex wants to run bash",
+               "tool_name": "Bash"}
+        event = classify_hook_event(raw, "PermissionRequest", provider=Provider.CODEX)
+        assert event.category == EventCategory.PERMISSION
+        assert event.message == "Codex wants to run bash"
+        assert event.provider == Provider.CODEX
+        assert event.hook_event_name == "PermissionRequest"
+
+    def test_codex_permission_request_with_tool_name_fallback(self):
+        """Codex PermissionRequest without message -> falls back to tool_name."""
+        raw = {"session_id": "s1", "cwd": "/t", "tool_name": "Bash"}
+        event = classify_hook_event(raw, "PermissionRequest", provider=Provider.CODEX)
+        assert event.category == EventCategory.PERMISSION
+        assert event.message == "Bash"
+
+    def test_codex_permission_request_without_message_or_tool(self):
+        """Codex PermissionRequest without message or tool_name -> generic fallback."""
+        raw = {"session_id": "s1", "cwd": "/t"}
+        event = classify_hook_event(raw, "PermissionRequest", provider=Provider.CODEX)
+        assert event.category == EventCategory.PERMISSION
+        assert "Codex needs permission" in event.message
+
+    def test_codex_stop_with_final_response(self):
+        """Codex Stop -> DONE, prefers final_response."""
+        raw = {"session_id": "s1", "cwd": "/t",
+               "final_response": "All tests pass",
+               "last_assistant_message": "Older message"}
+        event = classify_hook_event(raw, "Stop", provider=Provider.CODEX)
+        assert event.category == EventCategory.DONE
+        assert event.message == "All tests pass"
+
+    def test_codex_stop_with_last_assistant_message_fallback(self):
+        """Codex Stop without final_response -> falls back to last_assistant_message."""
+        raw = {"session_id": "s1", "cwd": "/t",
+               "last_assistant_message": "Task is complete"}
+        event = classify_hook_event(raw, "Stop", provider=Provider.CODEX)
+        assert event.category == EventCategory.DONE
+        assert event.message == "Task is complete"
+
+    def test_codex_stop_with_generic_fallback(self):
+        """Codex Stop without any message fields -> generic fallback."""
+        raw = {"session_id": "s1", "cwd": "/t"}
+        event = classify_hook_event(raw, "Stop", provider=Provider.CODEX)
+        assert event.category == EventCategory.DONE
+        assert event.message == "Codex task complete"
+
+    def test_codex_session_start(self):
+        """Codex SessionStart -> IDLE with session started message."""
+        raw = {"session_id": "s1", "cwd": "/t", "start_reason": "new"}
+        event = classify_hook_event(raw, "SessionStart", provider=Provider.CODEX)
+        assert event.category == EventCategory.IDLE
+        assert event.message == "Session started"
+        assert event.provider == Provider.CODEX
+        assert event.hook_event_name == "SessionStart"
+
+    def test_codex_unknown_event(self):
+        """Unknown Codex event -> ERROR."""
+        raw = {"session_id": "s1", "cwd": "/t"}
+        event = classify_hook_event(raw, "ToolUse", provider=Provider.CODEX)
+        assert event.category == EventCategory.ERROR
+        assert "ToolUse" in event.message
+        assert event.provider == Provider.CODEX
+
+    def test_codex_claude_notification_as_codex_is_error(self):
+        """Codex provider with Claude 'Notification' event -> ERROR (not a Codex event)."""
+        raw = {"notification_type": "permission_prompt", "session_id": "s1", "cwd": "/t"}
+        event = classify_hook_event(raw, "Notification", provider=Provider.CODEX)
+        assert event.category == EventCategory.ERROR
+        assert event.provider == Provider.CODEX
+
+    def test_existing_claude_stop_still_works(self):
+        """Existing Claude Code Stop classification unchanged."""
+        raw = {"session_id": "s1", "cwd": "/t",
+               "last_assistant_message": "Done with everything"}
+        event = classify_hook_event(raw, "Stop", provider=Provider.CLAUDE_CODE)
+        assert event.category == EventCategory.DONE
+        assert event.message == "Done with everything"
+
+    def test_existing_claude_notification_still_works(self):
+        """Existing Claude Code Notification classification unchanged."""
+        raw = {"notification_type": "idle_prompt", "session_id": "s1", "cwd": "/t"}
+        event = classify_hook_event(raw, "Notification")
+        assert event.category == EventCategory.IDLE

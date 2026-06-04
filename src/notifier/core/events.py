@@ -63,7 +63,7 @@ def classify_hook_event(
             provider = Provider.CLAUDE_CODE
 
     session = extract_session(raw, provider=provider)
-    category, message = _classify(event_type, raw)
+    category, message = _classify(provider, event_type, raw)
 
     return NotifierEvent(
         category=category,
@@ -75,10 +75,16 @@ def classify_hook_event(
     )
 
 
-def _classify(event_type: str, raw: Dict[str, Any]):
-    """Determine event category and message from hook event type and payload.
+def _classify(provider: Provider, event_type: str, raw: Dict[str, Any]):
+    """Dispatch to provider-specific classification."""
+    if provider == Provider.CODEX:
+        return _classify_codex(event_type, raw)
+    return _classify_claude_code(event_type, raw)
 
-    Classification rules:
+
+def _classify_claude_code(event_type: str, raw: Dict[str, Any]):
+    """Claude Code classification rules.
+
     - Notification + permission_prompt -> PERMISSION (D-03)
     - Notification + idle_prompt -> IDLE (research: no standalone Idle event)
     - Stop -> DONE
@@ -102,3 +108,27 @@ def _classify(event_type: str, raw: Dict[str, Any]):
         return EventCategory.IDLE, "Session started"
 
     return EventCategory.ERROR, f"Unknown event type: {event_type}"
+
+
+def _classify_codex(event_type: str, raw: Dict[str, Any]):
+    """Codex classification rules.
+
+    Per D-06: PermissionRequest -> PERMISSION.
+    Per D-07: Stop -> DONE.
+    Per D-08: SessionStart -> IDLE (session update only).
+    Per D-10: Unknown Codex events -> ERROR.
+    """
+    if event_type == "PermissionRequest":
+        # Prefer message, then tool_name, then fallback
+        msg = raw.get("message") or raw.get("tool_name") or "Codex needs permission"
+        return EventCategory.PERMISSION, msg
+
+    if event_type == "Stop":
+        # Prefer final_response, then last_assistant_message, then fallback
+        msg = (raw.get("final_response") or raw.get("last_assistant_message") or "Codex task complete")
+        return EventCategory.DONE, msg
+
+    if event_type == "SessionStart":
+        return EventCategory.IDLE, "Session started"
+
+    return EventCategory.ERROR, f"Unknown Codex event type: {event_type}"
