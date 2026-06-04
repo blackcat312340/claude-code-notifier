@@ -70,13 +70,27 @@ Plans:
 
 ### Phase 03.1: Codex Hook Support + Chinese Localization (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
+**Goal:** Add first-class Codex hook support and Chinese-first user-facing copy before abnormal-state detection.
 **Requirements**: TBD
 **Depends on:** Phase 3
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
+**Wave 1**
+
+- [ ] 03.1-01-PLAN.md -- Provider-Aware Event Backbone
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03.1-02-PLAN.md -- Codex Hook Installation + Unified Config CLI
+- [ ] 03.1-03-PLAN.md -- Chinese Notifications, Tray, and Detail Provider Display
+
+**Success Criteria**:
+
+1. Notifier events and sessions can distinguish Claude Code and Codex by provider without breaking existing Claude Code behavior
+2. Codex `PermissionRequest`, `Stop`, and `SessionStart` events are normalized into the notifier pipeline with the agreed notification semantics
+3. `notifier-config install` installs both Claude Code and Codex hooks while preserving unrelated user configuration
+4. Notifications, tray history, event details, and install/config output use concise Chinese-first copy while keeping provider and technical names recognizable
 
 ### Phase 4: Abnormal-State Detection
 
@@ -118,6 +132,12 @@ Plans:
 
 - Trust comes from visibility, not just raw functionality
 - The tray should explain what happened recently
+
+### Phase 03.1 Notes
+
+- Treat Codex as a first-class provider, not a Claude Code compatibility shim
+- Keep hook execution lightweight; reuse the existing local TCP bridge
+- Chinese copy should be concise and tool-like, with provider names kept stable
 
 ### Phase 4 Notes
 
