@@ -7,7 +7,9 @@ Reads a single JSON object from stdin, classifies, forwards via TCP.
 import json
 import sys
 import re
+import os
 from notifier.core.events import classify_hook_event
+from notifier.core.feishu import send_feishu_notification
 from notifier.core.ipc import send_event_or_drop, NOTIFIER_HOST, NOTIFIER_PORT
 
 
@@ -58,10 +60,15 @@ def process_hook_event(
 ):
     """Testable event processing: classify, send via TCP."""
     event = classify_hook_event(raw, event_type, provider=provider)
-    send_event_or_drop(event, timeout=timeout, host=host, port=port)
+    # Remote delivery works without a resident Windows tray process.
+    send_feishu_notification(event)
+    # Windows keeps local tray IPC; Linux/WSL defaults to remote-only.
+    local_default = "1" if (os.name == "nt" or host != NOTIFIER_HOST or port != NOTIFIER_PORT) else "0"
+    if os.environ.get("NOTIFIER_LOCAL_TCP", local_default) == "1":
+        send_event_or_drop(event, timeout=timeout, host=host, port=port)
 
 
-if __name__ == "__main__":
+def main():
     if len(sys.argv) < 2:
         print("Usage: python -m notifier.cli.hook <event_type> [provider]", file=sys.stderr)
         sys.exit(1)
@@ -70,3 +77,7 @@ if __name__ == "__main__":
     provider = sys.argv[2] if len(sys.argv) >= 3 else "claude_code"
     raw = _safe_read_stdin()
     process_hook_event(raw, event_type, provider=provider)
+
+
+if __name__ == "__main__":
+    main()
