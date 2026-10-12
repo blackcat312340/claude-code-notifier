@@ -1,0 +1,25 @@
+name: Feishu Notifier Tests
+
+on:
+  push:
+    branches:
+      - agent/feishu-webhook-notifier-20261012
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  feishu-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          python -m pip install -e .
+          python -m pip install pytest pytest-asyncio
+      - name: Run hook, Feishu and settings tests
+        run: python -m pytest -q src/notifier/tests/test_feishu.py src/notifier/tests/test_events.py src/notifier/tests/test_cli_hook.py src/notifier/tests/test_cli_config.py
