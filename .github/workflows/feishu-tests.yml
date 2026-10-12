@@ -22,4 +22,4 @@ jobs:
           python -m pip install -e .
           python -m pip install pytest pytest-asyncio
       - name: Run hook, Feishu and settings tests
-        run: python -m pytest -q src/notifier/tests/test_feishu.py src/notifier/tests/test_events.py src/notifier/tests/test_cli_hook.py src/notifier/tests/test_cli_config.py
+        run: python -m pytest -q src/notifier/tests/test_feishu.py src/notifier/tests/test_events.py src/notifier/tests/test_cli_hook.py src/notifier/tests/test_cli_config.py src/notifier/tests/test_settings.py
