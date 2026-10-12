@@ -104,8 +104,8 @@ def _classify_claude_code(event_type: str, raw: Dict[str, Any]):
             return EventCategory.ERROR, f"Unhandled notification type: {ntype}"
 
     if event_type == "Stop":
-        # Stop is a response boundary, not an assertion of task completion.
-        return EventCategory.DONE, "本轮回复结束"
+        # Keep existing local detail; the Feishu sender excludes it by default.
+        return EventCategory.DONE, (raw.get("last_assistant_message") or "")[:200]
 
     if event_type == "TaskCompleted":
         return EventCategory.DONE, ("任务已标记完成：" + str(raw.get("task_subject") or ""))[:200]
