@@ -17,6 +17,7 @@ app = typer.Typer(
 
 @app.command()
 def install(
+    skip_codex: bool = typer.Option(False, "--skip-codex", help="Only install Claude Code hooks (useful in WSL)"),
     settings_path: str = typer.Option(
         None,
         "--settings",
@@ -66,7 +67,7 @@ def install(
     typer.echo(f"Claude Code hooks: 已安装 ({s_path})")
     typer.echo(f"Claude Code ownership: {o_path}")
 
-    # Install Codex hooks
-    install_codex_hooks(hooks_path=cx_hooks, ownership_path=cx_own)
-    typer.echo(f"Codex hooks: 已安装 ({cx_hooks})")
-    typer.echo(f"Codex ownership: {cx_own}")
+    if not skip_codex:
+        install_codex_hooks(hooks_path=cx_hooks, ownership_path=cx_own)
+        typer.echo(f"Codex hooks: 已安装 ({cx_hooks})")
+        typer.echo(f"Codex ownership: {cx_own}")
