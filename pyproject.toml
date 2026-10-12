@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 notifier-hook = "notifier.cli.hook:main"
+notifier-feishu = "notifier.cli.feishu:main"
 notifier-config = "notifier.cli.config:app"
 
 [tool.pytest.ini_options]
