@@ -47,6 +47,18 @@ def _build_hook_entries():
                 ],
             },
             {
+                "matcher": "agent_needs_input",
+                "hooks": [
+                    {"type": "command", "command": f'"{python}" -m notifier.cli.hook Notification', "timeout": 10}
+                ],
+            },
+            {
+                "matcher": "agent_completed",
+                "hooks": [
+                    {"type": "command", "command": f'"{python}" -m notifier.cli.hook Notification', "timeout": 10}
+                ],
+            },
+            {
                 "matcher": "idle_prompt",
                 "hooks": [
                     {
@@ -56,6 +68,15 @@ def _build_hook_entries():
                     }
                 ],
             },
+        ],
+        "PermissionRequest": [
+            {"hooks": [{"type": "command", "command": f'"{python}" -m notifier.cli.hook PermissionRequest', "timeout": 10}]}
+        ],
+        "TaskCompleted": [
+            {"hooks": [{"type": "command", "command": f'"{python}" -m notifier.cli.hook TaskCompleted', "timeout": 10}]}
+        ],
+        "StopFailure": [
+            {"hooks": [{"type": "command", "command": f'"{python}" -m notifier.cli.hook StopFailure', "timeout": 10}]}
         ],
         "Stop": [
             {
@@ -79,8 +100,8 @@ OWNERSHIP_MARKER = {
     "tool": "claude-code-notifier",
     "version": "0.1.0",
     "installed_at": None,  # filled at install time
-    "hook_event_types": ["SessionStart", "Notification", "Stop"],
-    "matchers": {"Notification": ["permission_prompt", "idle_prompt"]},
+    "hook_event_types": ["SessionStart", "Notification", "PermissionRequest", "TaskCompleted", "Stop", "StopFailure"],
+    "matchers": {"Notification": ["permission_prompt", "idle_prompt", "agent_needs_input", "agent_completed"]},
 }
 
 
