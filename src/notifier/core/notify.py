@@ -42,8 +42,8 @@ def should_notify(event: NotifierEvent) -> bool:
     Unknown Codex/error records are classified as ERROR upstream and
     are suppressed here as well.
     """
-    # ERROR category never notifies (includes unknown Codex events per D-10)
-    if event.category == EventCategory.ERROR:
+    # Unknown/unhandled events remain silent; actual Claude API failures alert.
+    if event.category == EventCategory.ERROR and event.hook_event_name != "StopFailure":
         return False
     # SessionStart never notifies (D-08: session/history update only)
     if event.hook_event_name == "SessionStart":
