@@ -13,7 +13,7 @@ import socket
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from notifier.core.events import EventCategory, NotifierEvent, Provider
 
@@ -21,6 +21,24 @@ _WEBHOOK_HOSTS = {"open.feishu.cn", "open.larksuite.com"}
 _WEBHOOK_PREFIX = "/open-apis/bot/v2/hook/"
 _TIMEOUT_SECONDS = 3
 FEISHU_CONFIG_FILE = Path.home() / ".config" / "claude-code-notifier" / "feishu.json"
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    """Refuse redirects so a validated bot URL cannot forward the payload elsewhere."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_opener = build_opener(_NoRedirect)
+
+
+def urlopen(request, timeout):
+    """POST via an opener that never follows redirects.
+
+    Kept as a module-level seam so tests can patch ``notifier.core.feishu.urlopen``.
+    """
+    return _opener.open(request, timeout=timeout)
 
 
 def load_feishu_config(path: Path | None = None) -> dict:
@@ -78,7 +96,10 @@ def _summary(event: NotifierEvent) -> str | None:
         return "任务已标记完成"
     if event.hook_event_name == "Stop":
         return "本轮回复结束"
-    if event.hook_event_name == "PermissionRequest" or _category(event) == "permission":
+    if event.hook_event_name == "PermissionRequest":
+        # PermissionRequest is the immediate permission signal (has tool_name).
+        # Notification/permission_prompt is its delayed companion (~6s later);
+        # delivering it too would duplicate the same "需要授权" alert.
         return "需要授权"
     if _category(event) == "idle":
         return "等待输入"
@@ -159,6 +180,9 @@ def send_feishu_notification(event: NotifierEvent, *, environ=None) -> bool:
                 return False
             result = json.loads(response.read(4096))
             # A successful HTTP status alone does not mean that Feishu accepted the message.
+            if not isinstance(result, dict):
+                logging.warning("Feishu delivery rejected (malformed response)")
+                return False
             code = result.get("code", result.get("StatusCode"))
             if code not in (0, "0"):
                 logging.warning("Feishu delivery rejected (application code %s)", _clean(code, 30))

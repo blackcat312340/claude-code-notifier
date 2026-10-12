@@ -1,5 +1,9 @@
 """Tests for tray application (covers TRAY-01)."""
 import pytest
+
+# Pillow is a Windows-only dependency; skip the whole module elsewhere.
+pytest.importorskip("PIL")
+
 import threading
 from unittest.mock import patch
 from notifier.tray.app import (

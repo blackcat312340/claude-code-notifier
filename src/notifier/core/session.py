@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Dict, Any, Union
 from notifier.core.events import SessionInfo, Provider
 
@@ -39,5 +38,7 @@ def project_name(cwd: str) -> str:
     """
     if not cwd:
         return "unknown"
-    parts = Path(cwd).parts
+    # Normalize Windows separators so backslash paths yield the leaf
+    # directory on POSIX hosts too (e.g. a Windows path seen from WSL).
+    parts = [p for p in cwd.replace("\\", "/").split("/") if p]
     return parts[-1] if parts else "unknown"

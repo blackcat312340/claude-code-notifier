@@ -17,6 +17,8 @@ Claude Code Notifier 是一个 Windows 原生的系统托盘工具，监听本�
 
 ## 安装
 
+### Windows（原托盘通知）
+
 ```bash
 # 安装依赖
 pip install -e .
@@ -24,6 +26,20 @@ pip install -e .
 # 安装 hook 配置到 Claude Code / Codex
 notifier-config
 ```
+
+### WSL / Linux（推荐项目本地虚拟环境）
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+
+# 仅安装 Claude Code hooks（Codex 可选去掉 --skip-codex）
+.venv/bin/notifier-config --skip-codex
+```
+
+> 安装器会把 `.venv` 中 Python 的绝对路径写入 `~/.claude/settings.json` 的 hook 命令，
+> 所以无论 Claude Code 在哪个项目目录运行都能找到该 hook，且不修改系统级 Python。
+> 若移动或删除该虚拟环境，请重新运行 `notifier-config`。
 
 ## 使用
 
@@ -80,11 +96,14 @@ Windows 桌面通知
 3. 在 **运行 Claude Code 的同一个系统环境**（Windows 或 WSL）安装此项目，注册当前 Claude Hooks 并配置飞书：
 
 ```bash
-python -m pip install -e .
-notifier-config --skip-codex
-notifier-feishu setup
-notifier-feishu status
-notifier-feishu test
+# WSL / Linux（推荐项目本地虚拟环境；Windows 直接 pip install -e . 即可）
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/notifier-config --skip-codex
+
+.venv/bin/notifier-feishu setup     # 交互输入 Webhook / 签名密钥 / 设备名
+.venv/bin/notifier-feishu status    # 确认已配置
+.venv/bin/notifier-feishu test      # 立即向群聊发送测试消息
 ```
 
 `notifier-feishu setup` 会交互式输入 Webhook、可选签名密钥和设备名称。敏感信息仅保存于当前用户的 `~/.config/claude-code-notifier/feishu.json`，在 Linux/WSL 上设置为仅用户可读写（0600）；**切勿将该文件上传到 GitHub**。也可以改用环境变量：`NOTIFIER_FEISHU_WEBHOOK`、`NOTIFIER_FEISHU_SECRET`、`NOTIFIER_DEVICE_NAME`。环境变量优先。
@@ -99,14 +118,44 @@ notifier-feishu test
 - 请在飞书中设置消息提醒，电脑 B 才会弹出桌面通知。飞书的组织策略可能禁止添加自定义机器人。
 - 安装器仅修改 `~/.claude/settings.json` 的 `hooks`，保留其他配置；反复运行不会重复添加同一个 notifier-owned Hook。
 
+### 多个 Claude 会话与项目识别
+
+每条消息包含「设备名」和「项目名」。项目名取自 Claude Code 的 `cwd` 最末目录（D-04），因此同一设备上不同项目、不同会话的通知可以区分。设备名在 `notifier-feishu setup` 时设置，也可用 `NOTIFIER_DEVICE_NAME` 覆盖。
+
+### 故障诊断
+
+| 症状 | 排查 |
+|------|------|
+| `notifier-feishu status` 显示未配置 | 运行 `notifier-feishu setup`，或设置 `NOTIFIER_FEISHU_WEBHOOK` 环境变量 |
+| 群聊收不到消息 | 运行 `notifier-feishu test`；确认机器人「签名校验/关键词/IP 白名单」策略与配置一致 |
+| 返回 `19024` | 未命中机器人要求的关键词；消息默认含 `Claude Notifier`，可将其设为关键词 |
+| 返回 `19022` | 当前出口 IP 不在机器人 IP 白名单内 |
+| 返回 `19021` | 签名校验失败或时间戳超出 1 小时；检查密钥是否正确、系统时钟是否准确 |
+| 返回 `19001` 等其他非 0 code | 机器人或请求有误，检查 Webhook 地址与密钥 |
+| WSL 下无通知 | 确认 `notifier-config` 已安装 hooks，`~/.claude/settings.json` 的 `hooks` 含本工具命令；重启 Claude Code |
+| 怀疑 hook 未运行 | 手工运行 `echo '{"session_id":"t","cwd":"/tmp"}' | .venv/bin/notifier-hook Stop` 验证 CLI 可加载 |
+
+故障时不抛异常：每次飞书请求超时 3 秒且最多一次，失败仅记录最小错误类型（绝不打印 Webhook URL 或密钥），不影响 Claude Code 的权限决策或工作流。
+
+### 安全注意事项
+
+- Webhook 地址与签名密钥是凭据：仅保存在 `~/.config/claude-code-notifier/feishu.json`（Linux/WSL 权限 0600）或环境变量中，**不要写进 Git 仓库、聊天或日志**。
+- 默认只发送事件、设备名、项目名与有限的允许字段；不发送完整回复、工具输入、会话 ID、Transcript 路径或原始 Payload。对话摘要需显式开启 `NOTIFIER_FEISHU_INCLUDE_MESSAGE=1`，且已知可能泄露私密内容。
+- Webhook 必须是官方 `https://open.feishu.cn` / `https://open.larksuite.com` 的 `/open-apis/bot/v2/hook/` 地址；其他主机、明文 HTTP、带凭据或查询串的地址会被拒绝。发送时**不跟随重定向**，防止把消息转发到其他主机。
+- 签名采用官方 HmacSHA256 算法（`timestamp\n密钥` 作为密钥，结果 Base64），时间戳须在当前时间 1 小时内。
+- `notifier-feishu setup` 使用无回显输入；配置写入使用原子替换并设置 0600。
+
 ## 开发
 
 ```bash
 git clone https://github.com/blackcat312340/claude-code-notifier.git
 cd claude-code-notifier
-pip install -e .\npython -m pip install pytest pytest-asyncio
-pytest src/notifier/tests/ -v
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/pytest src/notifier/tests/ -v
 ```
+
+平台差异：`test_notify.py`、`test_tray_app.py`、`test_menu.py` 依赖 Windows 专用的 `winotify`/`Pillow`，在 Linux/WSL 下会被 pytest 明确跳过（`importorskip`）；其余测试全部适用。
 
 ## 许可证
 

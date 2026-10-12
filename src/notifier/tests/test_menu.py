@@ -1,5 +1,9 @@
 """Tests for dynamic tray menu and event formatting."""
 import pytest
+
+# Imports notifier.tray.app, which requires Pillow (Windows-only).
+pytest.importorskip("PIL")
+
 from datetime import datetime, timezone
 from unittest.mock import patch
 from notifier.core.events import EventCategory, NotifierEvent, SessionInfo, Provider

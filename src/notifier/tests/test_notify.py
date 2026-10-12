@@ -1,5 +1,9 @@
 """Tests for notification dispatch (covers ATTN-01, ATTN-02, ATTN-03)."""
 import pytest
+
+# winotify is a Windows-only dependency; skip the whole module elsewhere.
+pytest.importorskip("winotify")
+
 import time
 from unittest.mock import patch, MagicMock
 from notifier.core.events import (

@@ -114,3 +114,121 @@ def test_opt_in_message_preview():
     item = event("Stop", {"last_assistant_message": "a private response"})
     assert "a private response" not in format_feishu_text(item)
     assert "a private response" in format_feishu_text(item, include_message=True)
+
+
+def test_malformed_json_response_is_rejected_not_crash():
+    """A non-dict JSON body must be rejected cleanly, not raise AttributeError."""
+    item = event("Stop")
+    with patch("notifier.core.feishu.urlopen", return_value=FakeResponse([])):
+        assert not send_feishu_notification(item, environ={
+            "NOTIFIER_FEISHU_WEBHOOK": "https://open.feishu.cn/open-apis/bot/v2/hook/fake"
+        })
+
+
+def test_redirect_is_never_followed():
+    """The HTTP opener refuses redirects to any other host."""
+    from notifier.core.feishu import _NoRedirect
+    assert _NoRedirect().redirect_request(None, None, 302, None, None, "https://evil.example/steal") is None
+
+
+def test_http_redirect_response_fails_gracefully():
+    """A 3xx HTTP response is a delivery failure, never a success."""
+    import io
+    from urllib.error import HTTPError
+    item = event("Stop")
+    exc = HTTPError("https://open.feishu.cn/open-apis/bot/v2/hook/fake", 302, "Found", {}, io.BytesIO())
+    with patch("notifier.core.feishu.urlopen", side_effect=exc):
+        assert not send_feishu_notification(item, environ={
+            "NOTIFIER_FEISHU_WEBHOOK": "https://open.feishu.cn/open-apis/bot/v2/hook/fake"
+        })
+
+
+def test_notification_permission_prompt_does_not_duplicate_permission_request():
+    """Only the immediate PermissionRequest hook alerts for permissions."""
+    request = format_feishu_text(event("PermissionRequest", {"tool_name": "Bash"}), device="A")
+    assert "需要授权" in request and "Bash" in request
+    # The delayed Notification companion must not produce a second message.
+    assert format_feishu_text(event("Notification", {"notification_type": "permission_prompt"}), device="A") is None
+
+
+def test_timeout_raises_delivery_failure_not_crash():
+    """A socket timeout must be a clean delivery failure (no exception leak)."""
+    item = event("Stop")
+    with patch("notifier.core.feishu.urlopen", side_effect=TimeoutError("timed out")):
+        assert not send_feishu_notification(item, environ={
+            "NOTIFIER_FEISHU_WEBHOOK": "https://open.feishu.cn/open-apis/bot/v2/hook/fake"
+        })
+
+
+class _FeishuMockServer:
+    """Minimal local HTTP server acting as a Feishu group-robot endpoint."""
+
+    def __init__(self, response_payload=b'{"code": 0, "msg": "success"}', status=200):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        self.received = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                self.server.received["body"] = self.rfile.read(length)
+                body = self.server.response_payload
+                self.send_response(self.server.status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        server.received = self.received
+        server.response_payload = response_payload
+        server.status = status
+        self.server = server
+        self.thread = threading.Thread(target=server.serve_forever, daemon=True)
+
+    def start(self):
+        self.thread.start()
+        return self.server.server_address[1]
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def test_end_to_end_http_delivery_to_mock_endpoint():
+    """Real HTTP stack: POST a Stop message to a local mock, success accepted."""
+    from notifier.core import feishu
+
+    mock = _FeishuMockServer()
+    port = mock.start()
+    try:
+        url = f"http://127.0.0.1:{port}/open-apis/bot/v2/hook/fake"
+        with patch.object(feishu, "_valid_webhook", return_value=True):
+            assert send_feishu_notification(
+                event("Stop"), environ={"NOTIFIER_FEISHU_WEBHOOK": url}
+            )
+    finally:
+        mock.stop()
+    sent = json.loads(mock.received["body"].decode())
+    assert sent["msg_type"] == "text"
+    assert "本轮回复结束" in sent["content"]["text"]
+    assert "private-session" not in sent["content"]["text"]
+
+
+def test_end_to_end_http_delivery_malformed_response_rejected():
+    """Real HTTP stack: a non-JSON body from the endpoint is a clean rejection."""
+    from notifier.core import feishu
+
+    mock = _FeishuMockServer(response_payload=b"[]")
+    port = mock.start()
+    try:
+        url = f"http://127.0.0.1:{port}/open-apis/bot/v2/hook/fake"
+        with patch.object(feishu, "_valid_webhook", return_value=True):
+            assert not send_feishu_notification(
+                event("Stop"), environ={"NOTIFIER_FEISHU_WEBHOOK": url}
+            )
+    finally:
+        mock.stop()

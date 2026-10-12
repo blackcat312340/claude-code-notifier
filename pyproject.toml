@@ -17,6 +17,14 @@ notifier-hook = "notifier.cli.hook:main"
 notifier-feishu = "notifier.cli.feishu:main"
 notifier-config = "notifier.cli.config:app"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["src/notifier/tests"]
 pythonpath = ["src"]
