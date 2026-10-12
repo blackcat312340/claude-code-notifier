@@ -24,13 +24,15 @@ class TestHookEntriesStructure:
     def test_has_stop(self):
         assert "Stop" in HOOK_ENTRIES
 
-    def test_notification_has_two_matchers(self):
+    def test_notification_has_current_matchers(self):
         """Notification has explicit matchers per_prompt and idle_prompt."""
         entries = HOOK_ENTRIES["Notification"]
-        assert len(entries) == 2
+        assert len(entries) == 4
         matchers = [e.get("matcher") for e in entries]
         assert "permission_prompt" in matchers
         assert "idle_prompt" in matchers
+        assert "agent_needs_input" in matchers
+        assert "agent_completed" in matchers
 
     def test_session_start_has_no_matcher(self):
         """SessionStart is unconditional -- no matcher field."""
@@ -249,20 +251,19 @@ class TestInstallHooks:
         result = json.loads(settings_path.read_text())
         assert result["theme"] == "light"
         assert len(result["hooks"]["SessionStart"]) == 1
-        assert len(result["hooks"]["Notification"]) == 2
+        assert len(result["hooks"]["Notification"]) == 4
         assert len(result["hooks"]["Stop"]) == 1
 
     def test_handles_corrupt_settings_gracefully(self, temp_dir):
-        """If settings.json has invalid JSON, it's replaced with new config."""
+        """Invalid settings must be preserved and reported, not overwritten."""
         settings_path = temp_dir / "settings.json"
         settings_path.write_text("this is not json")
 
         ownership_path = temp_dir / "ownership.json"
-        result = install_hooks(settings_path=settings_path, ownership_path=ownership_path)
-
-        assert result is True
-        parsed = json.loads(settings_path.read_text())
-        assert "hooks" in parsed
+        with pytest.raises(ValueError, match="Refusing to overwrite"):
+            install_hooks(settings_path=settings_path, ownership_path=ownership_path)
+        assert settings_path.read_text() == "this is not json"
+        assert not ownership_path.exists()
 
 
 class TestInstallCodexHooks:
@@ -409,17 +410,36 @@ class TestInstallCodexHooks:
             assert "notifier.cli.hook" in cmd
 
     def test_handles_corrupt_codex_json_gracefully(self, temp_dir):
-        """If Codex hooks.json has invalid JSON, a fresh install succeeds."""
+        """Invalid Codex settings must never be overwritten."""
         hooks_path = temp_dir / "hooks.json"
         hooks_path.write_text("this is not json")
 
         ownership_path = temp_dir / "ownership.json"
         from notifier.core.settings import install_codex_hooks
-        result = install_codex_hooks(
-            hooks_path=hooks_path,
-            ownership_path=ownership_path,
-        )
+        with pytest.raises(ValueError, match="Refusing to overwrite"):
+            install_codex_hooks(hooks_path=hooks_path, ownership_path=ownership_path)
+        assert hooks_path.read_text() == "this is not json"
+        assert not ownership_path.exists()
 
-        assert result is True
-        parsed = json.loads(hooks_path.read_text())
-        assert "SessionStart" in parsed
+
+def test_mixed_hook_group_preserves_user_hook(temp_dir):
+    """Reinstall must not delete a user's hook inside a shared matcher group."""
+    settings_path = temp_dir / "settings.json"
+    ownership_path = temp_dir / "ownership.json"
+    original = {
+        "hooks": {
+            "Stop": [{
+                "hooks": [
+                    {"type": "command", "command": "echo preserve-me"},
+                    {"type": "command", "command": "python -m notifier.cli.hook Stop"},
+                ]
+            }]
+        }
+    }
+    settings_path.write_text(json.dumps(original))
+    install_hooks(settings_path=settings_path, ownership_path=ownership_path)
+    install_hooks(settings_path=settings_path, ownership_path=ownership_path)
+    after = json.loads(settings_path.read_text())
+    cmds = [hook.get("command") for e in after["hooks"]["Stop"] for hook in e.get("hooks", [])]
+    assert cmds.count("echo preserve-me") == 1
+    assert sum("notifier.cli.hook" in c for c in cmds) == 1
