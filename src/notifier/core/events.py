@@ -96,13 +96,25 @@ def _classify_claude_code(event_type: str, raw: Dict[str, Any]):
         ntype = raw.get("notification_type", "")
         if ntype == "permission_prompt":
             return EventCategory.PERMISSION, raw.get("message")
-        elif ntype == "idle_prompt":
+        elif ntype in ("idle_prompt", "agent_needs_input"):
             return EventCategory.IDLE, raw.get("message")
+        elif ntype == "agent_completed":
+            return EventCategory.DONE, "后台 Agent 已结束"
         else:
             return EventCategory.ERROR, f"Unhandled notification type: {ntype}"
 
     if event_type == "Stop":
-        return EventCategory.DONE, (raw.get("last_assistant_message") or "")[:200]
+        # Stop is a response boundary, not an assertion of task completion.
+        return EventCategory.DONE, "本轮回复结束"
+
+    if event_type == "TaskCompleted":
+        return EventCategory.DONE, ("任务已标记完成：" + str(raw.get("task_subject") or ""))[:200]
+
+    if event_type == "PermissionRequest":
+        return EventCategory.PERMISSION, str(raw.get("tool_name") or "需要授权")[:100]
+
+    if event_type == "StopFailure":
+        return EventCategory.ERROR, str(raw.get("error") or "unknown")[:100]
 
     if event_type == "SessionStart":
         return EventCategory.IDLE, "Session started"
