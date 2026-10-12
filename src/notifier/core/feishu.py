@@ -11,6 +11,7 @@ import logging
 import os
 import socket
 import time
+from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -19,6 +20,21 @@ from notifier.core.events import EventCategory, NotifierEvent, Provider
 _WEBHOOK_HOSTS = {"open.feishu.cn", "open.larksuite.com"}
 _WEBHOOK_PREFIX = "/open-apis/bot/v2/hook/"
 _TIMEOUT_SECONDS = 3
+FEISHU_CONFIG_FILE = Path.home() / ".config" / "claude-code-notifier" / "feishu.json"
+
+
+def load_feishu_config(path: Path | None = None) -> dict:
+    """Read per-user config. Never log the webhook or signing secret."""
+    location = FEISHU_CONFIG_FILE if path is None else path
+    try:
+        if location.stat().st_size > 4096:
+            return {}
+        data = json.loads(location.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
 
 
 def _valid_webhook(url: str) -> bool:
@@ -107,8 +123,18 @@ def build_feishu_payload(text: str, secret: str = "", *, timestamp: int | None =
 
 def send_feishu_notification(event: NotifierEvent, *, environ=None) -> bool:
     """Best-effort bounded POST; never changes Claude's permission decisions."""
-    env = os.environ if environ is None else environ
-    url = env.get("NOTIFIER_FEISHU_WEBHOOK", "").strip()
+    if environ is None:
+        local = load_feishu_config()
+        env = {
+            "NOTIFIER_FEISHU_WEBHOOK": local.get("webhook", ""),
+            "NOTIFIER_FEISHU_SECRET": local.get("secret", ""),
+            "NOTIFIER_DEVICE_NAME": local.get("device", ""),
+            "NOTIFIER_FEISHU_INCLUDE_MESSAGE": "1" if local.get("include_message", False) else "0",
+        }
+        env.update(os.environ)
+    else:
+        env = environ
+    url = str(env.get("NOTIFIER_FEISHU_WEBHOOK") or "").strip()
     if not url:
         return False
     if not _valid_webhook(url):
