@@ -170,8 +170,8 @@ def _read_json(path: Path) -> Dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        logging.warning("Could not read %s: %s. Starting fresh.", path, exc)
-        return {}
+        # Invalid existing settings are user data; never silently overwrite them.
+        raise ValueError(f"Refusing to overwrite unreadable settings file: {path}") from exc
 
 
 def _write_json(path: Path, data: Dict[str, Any]) -> None:
@@ -193,6 +193,25 @@ def _is_notifier_entry(entry: Dict[str, Any]) -> bool:
         if "notifier.cli.hook" in cmd or "notifier-hook" in cmd:
             return True
     return False
+
+
+def _strip_notifier_hooks(entries):
+    """Remove our commands only; keep other commands in the same hook group."""
+    cleaned = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("hooks"), list):
+            cleaned.append(entry)
+            continue
+        hooks = entry["hooks"]
+        remaining = [
+            h for h in hooks
+            if not isinstance(h, dict)
+            or not ("notifier.cli.hook" in str(h.get("command", ""))
+                    or "notifier-hook" in str(h.get("command", "")))
+        ]
+        if remaining or not hooks:
+            cleaned.append({**entry, "hooks": remaining})
+    return cleaned
 
 
 def install_hooks(
@@ -229,11 +248,7 @@ def install_hooks(
         for event_type in list(existing["hooks"].keys()):
             entries = existing["hooks"][event_type]
             if isinstance(entries, list):
-                existing["hooks"][event_type] = [
-                    e
-                    for e in entries
-                    if not _is_notifier_entry(e)
-                ]
+                existing["hooks"][event_type] = _strip_notifier_hooks(entries)
             # Clean up empty event type keys
             if not existing["hooks"][event_type]:
                 del existing["hooks"][event_type]
@@ -291,9 +306,7 @@ def install_codex_hooks(
     for event_type in list(existing.keys()):
         entries = existing[event_type]
         if isinstance(entries, list):
-            existing[event_type] = [
-                e for e in entries if not _is_notifier_entry(e)
-            ]
+            existing[event_type] = _strip_notifier_hooks(entries)
         # Clean up empty event type keys
         if not existing[event_type]:
             del existing[event_type]
