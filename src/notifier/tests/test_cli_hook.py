@@ -2,6 +2,7 @@
 import pytest
 import asyncio
 import json
+from unittest.mock import patch
 from notifier.core.events import EventCategory, Provider
 from notifier.cli.hook import process_hook_event
 
@@ -85,6 +86,68 @@ class TestProcessHookEvent:
         # Should not raise any exception
         result = process_hook_event(raw, "Notification", host="127.0.0.1", port=48998, timeout=1)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_task_completed_forwards_locally_but_skips_feishu_http(self):
+        """TaskCompleted is Feishu-silenced but still reaches the local tray via TCP."""
+        received = []
+
+        async def handler(reader, writer):
+            data = await reader.readline()
+            received.append(data)
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        with patch("notifier.core.feishu.urlopen") as opener:
+            async with server:
+                raw = {
+                    "session_id": "sess-005",
+                    "cwd": "/projects/notifier",
+                    "task_subject": "Run tests",
+                }
+                process_hook_event(raw, "TaskCompleted", host="127.0.0.1", port=port)
+                await asyncio.sleep(0.2)
+
+        # Feishu layer must never issue an HTTP call for this event.
+        opener.assert_not_called()
+        assert len(received) == 1
+        parsed = json.loads(received[0].decode().strip())
+        assert parsed["hook_event_name"] == "TaskCompleted"
+        assert parsed["category"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_agent_completed_forwards_locally_but_skips_feishu_http(self):
+        """Notification:agent_completed is Feishu-silenced but still reaches the tray."""
+        received = []
+
+        async def handler(reader, writer):
+            data = await reader.readline()
+            received.append(data)
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(handler, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        with patch("notifier.core.feishu.urlopen") as opener:
+            async with server:
+                raw = {
+                    "session_id": "sess-006",
+                    "cwd": "/projects/notifier",
+                    "notification_type": "agent_completed",
+                }
+                process_hook_event(raw, "Notification", host="127.0.0.1", port=port)
+                await asyncio.sleep(0.2)
+
+        # Feishu layer must never issue an HTTP call for this event.
+        opener.assert_not_called()
+        assert len(received) == 1
+        parsed = json.loads(received[0].decode().strip())
+        assert parsed["hook_event_name"] == "Notification"
+        assert parsed["category"] == "done"
 
     @pytest.mark.asyncio
     async def test_process_codex_permission_request(self):

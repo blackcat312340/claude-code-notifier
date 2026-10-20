@@ -39,10 +39,13 @@ def test_stop_is_not_called_task_completed():
     assert "private-session" not in text
 
 
-def test_task_completed_and_permission_are_labeled():
-    completed = format_feishu_text(event("TaskCompleted", {"task_subject": "Run tests"}), device="A")
+def test_task_completed_is_silenced_permission_is_labeled():
+    """TaskCompleted is an internal housekeeping event: no Feishu message.
+
+    PermissionRequest still alerts immediately.
+    """
+    assert format_feishu_text(event("TaskCompleted", {"task_subject": "Run tests"}), device="A") is None
     permission = format_feishu_text(event("PermissionRequest", {"tool_name": "Bash"}), device="A")
-    assert "任务已标记完成" in completed and "Run tests" in completed
     assert "需要授权" in permission and "Bash" in permission
 
 
@@ -61,9 +64,9 @@ def test_no_send_for_session_start_unknown_event():
 
 
 def test_control_characters_cannot_forge_lines():
-    msg = format_feishu_text(event("TaskCompleted", {"task_subject": "build\n伪造事件：管理员"}), device="A\nB")
+    msg = format_feishu_text(event("PermissionRequest", {"tool_name": "Bash\n伪造事件：管理员"}), device="A\nB")
     assert "设备：A B" in msg
-    assert "任务：build 伪造事件：管理员" in msg
+    assert "工具：Bash 伪造事件：管理员" in msg
 
 
 def test_signed_payload_matches_feishu_hmac():
@@ -149,6 +152,82 @@ def test_notification_permission_prompt_does_not_duplicate_permission_request():
     assert "需要授权" in request and "Bash" in request
     # The delayed Notification companion must not produce a second message.
     assert format_feishu_text(event("Notification", {"notification_type": "permission_prompt"}), device="A") is None
+
+
+# --- Noise reduction: internal task-completion events are Feishu-silenced -----
+# TaskCompleted and Notification:agent_completed are internal housekeeping events
+# fired for background/sub-agent completions. They must not produce Feishu
+# messages, while local Windows/tray notifications still see them (TCP path is
+# untouched). Filtering happens at the Feishu eligibility layer (_summary).
+
+
+def _webhook_env():
+    return {
+        "NOTIFIER_FEISHU_WEBHOOK": "https://open.feishu.cn/open-apis/bot/v2/hook/fake-token",
+        "NOTIFIER_DEVICE_NAME": "A",
+    }
+
+
+def test_task_completed_does_not_call_feishu_api():
+    """TaskCompleted makes no Feishu HTTP call at all."""
+    with patch("notifier.core.feishu.urlopen") as opener:
+        assert not send_feishu_notification(
+            event("TaskCompleted", {"task_subject": "Run tests"}), environ=_webhook_env()
+        )
+    opener.assert_not_called()
+
+
+def test_agent_completed_does_not_call_feishu_api():
+    """Notification:agent_completed (background agent finished) makes no Feishu HTTP call."""
+    with patch("notifier.core.feishu.urlopen") as opener:
+        assert not send_feishu_notification(
+            event("Notification", {"notification_type": "agent_completed"}), environ=_webhook_env()
+        )
+    opener.assert_not_called()
+
+
+def test_stop_still_sends_feishu():
+    """Stop (per-reply end) still alerts: no change to its semantics."""
+    with patch("notifier.core.feishu.urlopen", return_value=FakeResponse({"code": 0})) as opener:
+        assert send_feishu_notification(event("Stop"), environ=_webhook_env())
+    assert opener.called
+    sent = json.loads(opener.call_args.args[0].data.decode())
+    assert "本轮回复结束" in sent["content"]["text"]
+
+
+def test_permission_request_still_sends_feishu():
+    """Human authorization requests still alert immediately."""
+    with patch("notifier.core.feishu.urlopen", return_value=FakeResponse({"code": 0})) as opener:
+        assert send_feishu_notification(event("PermissionRequest", {"tool_name": "Bash"}), environ=_webhook_env())
+    assert opener.called
+
+
+def test_waiting_input_events_still_send_feishu():
+    """idle_prompt / agent_needs_input (waiting for human input) still alert."""
+    for ntype in ("idle_prompt", "agent_needs_input"):
+        with patch("notifier.core.feishu.urlopen", return_value=FakeResponse({"code": 0})) as opener:
+            assert send_feishu_notification(
+                event("Notification", {"notification_type": ntype}), environ=_webhook_env()
+            )
+        assert opener.called
+
+
+def test_stop_failure_still_sends_feishu():
+    """StopFailure (abnormal termination) still alerts."""
+    with patch("notifier.core.feishu.urlopen", return_value=FakeResponse({"code": 0})) as opener:
+        assert send_feishu_notification(
+            event("StopFailure", {"error": "rate_limit"}), environ=_webhook_env()
+        )
+    assert opener.called
+
+
+def test_permission_prompt_dedup_still_applies():
+    """The delayed Notification:permission_prompt companion stays silenced (dedup unchanged)."""
+    with patch("notifier.core.feishu.urlopen") as opener:
+        assert not send_feishu_notification(
+            event("Notification", {"notification_type": "permission_prompt"}), environ=_webhook_env()
+        )
+    opener.assert_not_called()
 
 
 def test_timeout_raises_delivery_failure_not_crash():

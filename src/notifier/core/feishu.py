@@ -88,12 +88,20 @@ def _provider(event: NotifierEvent) -> str:
 
 
 def _summary(event: NotifierEvent) -> str | None:
+    # Feishu-only eligibility: events that fall through to ``return None`` are
+    # silenced at this layer (format_feishu_text -> None -> no HTTP call), while
+    # local Windows/tray notifications still see them via the TCP path.
+    # Internal housekeeping events never need a human action and would flood the
+    # Feishu group when parallel sessions complete tasks:
+    #   - TaskCompleted           -> silenced
+    #   - Notification/agent_completed -> silenced
+    #   - SessionStart            -> silenced
     if event.hook_event_name == "SessionStart":
+        return None
+    if event.hook_event_name == "TaskCompleted":
         return None
     if event.hook_event_name == "StopFailure":
         return "执行异常"
-    if event.hook_event_name == "TaskCompleted":
-        return "任务已标记完成"
     if event.hook_event_name == "Stop":
         return "本轮回复结束"
     if event.hook_event_name == "PermissionRequest":
@@ -104,7 +112,8 @@ def _summary(event: NotifierEvent) -> str | None:
     if _category(event) == "idle":
         return "等待输入"
     if event.hook_event_name == "Notification" and _category(event) == "done":
-        return "后台 Agent 已结束"
+        # Notification/agent_completed: internal background-agent completion.
+        return None
     return None
 
 
@@ -121,9 +130,6 @@ def format_feishu_text(event: NotifierEvent, *, device: str = "", include_messag
     ]
     if event.hook_event_name == "StopFailure":
         result.append(f"原因：{_clean(event.raw_payload.get('error', 'unknown'), 60)}")
-    elif event.hook_event_name == "TaskCompleted":
-        # Task subject is task metadata (never task_description).
-        result.append(f"任务：{_clean(event.raw_payload.get('task_subject', ''), 100)}")
     elif event.hook_event_name == "PermissionRequest":
         result.append(f"工具：{_clean(event.raw_payload.get('tool_name', ''), 60)}")
     elif include_message and event.hook_event_name in ("Stop", "Notification"):
